@@ -6,6 +6,20 @@ export interface Division {
   createdAt?: string;
 }
 
+export interface Unit {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt?: string;
+}
+
+export interface ItemCategory {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt?: string;
+}
+
 export interface Transaction {
   id: string;
   date: string;
@@ -302,7 +316,9 @@ export interface InventoryUnitCost {
   itemName: string;
   date: string;
   unitCost: number;
+  marginPercent?: number;
   minSellingPrice: number;
+  category?: string;
   division: string;
 }
 

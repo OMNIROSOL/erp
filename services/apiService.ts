@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:3001/api';
+// Dynamically determine the backend host based on the frontend's hostname
+const API_BASE_URL = `http://${window.location.hostname}:3001/api`;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -31,11 +32,24 @@ export const apiService = {
   getItem: (id: string) => api.get(`/items/${id}`).then(res => res.data),
   createItem: (data: any) => api.post('/items', data).then(res => res.data),
   updateItem: (id: string, data: any) => api.put(`/items/${id}`, data).then(res => res.data),
+  deleteItem: (id: string) => api.delete(`/items/${id}`).then(res => res.data),
   getItemTransactions: (id: string) => api.get(`/items/${id}/transactions`).then(res => res.data),
 
   getDivisions: () => api.get('/divisions').then(res => res.data),
   createDivision: (data: any) => api.post('/divisions', data).then(res => res.data),
   deleteDivision: (id: string) => api.delete(`/divisions/${id}`).then(res => res.data),
+
+  // Units
+  getUnits: () => api.get('/units').then(res => res.data),
+  createUnit: (data: any) => api.post('/units', data).then(res => res.data),
+  updateUnit: (id: string, data: any) => api.put(`/units/${id}`, data).then(res => res.data),
+  deleteUnit: (id: string) => api.delete(`/units/${id}`).then(res => res.data),
+
+  // Item Categories
+  getItemCategories: () => api.get('/item-categories').then(res => res.data),
+  createItemCategory: (data: any) => api.post('/item-categories', data).then(res => res.data),
+  updateItemCategory: (id: string, data: any) => api.put(`/item-categories/${id}`, data).then(res => res.data),
+  deleteItemCategory: (id: string) => api.delete(`/item-categories/${id}`).then(res => res.data),
 
   getAccounts: () => api.get('/accounts').then(res => res.data),
   getAccount: (id: string) => api.get(`/accounts/${id}`).then(res => res.data),
@@ -96,11 +110,13 @@ export const apiService = {
   getInventoryTransfer: (id: string) => api.get(`/inventory-transfers/${id}`).then(res => res.data),
   createInventoryTransfer: (data: any) => api.post('/inventory-transfers', data).then(res => res.data),
   updateInventoryTransfer: (id: string, data: any) => api.put(`/inventory-transfers/${id}`, data).then(res => res.data),
+  updateInventoryTransferStatus: (id: string, status: string) => api.patch(`/inventory-transfers/${id}`, { status }).then(res => res.data),
 
   getInventoryWriteOffs: () => api.get('/inventory-write-offs').then(res => res.data),
   getInventoryWriteOff: (id: string) => api.get(`/inventory-write-offs/${id}`).then(res => res.data),
   createInventoryWriteOff: (data: any) => api.post('/inventory-write-offs', data).then(res => res.data),
   updateInventoryWriteOff: (id: string, data: any) => api.put(`/inventory-write-offs/${id}`, data).then(res => res.data),
+  updateInventoryWriteOffStatus: (id: string, status: string) => api.patch(`/inventory-write-offs/${id}`, { status }).then(res => res.data),
 
   getInventoryLocations: () => api.get('/locations').then(res => res.data),
   createLocation: (data: any) => api.post('/locations', data).then(res => res.data),
@@ -109,6 +125,7 @@ export const apiService = {
   getInventoryUnitCosts: () => api.get('/inventory-unit-costs').then(res => res.data),
   createInventoryUnitCost: (data: any) => api.post('/inventory-unit-costs', data).then(res => res.data),
   updateInventoryUnitCost: (id: string, data: any) => api.put(`/inventory-unit-costs/${id}`, data).then(res => res.data),
+  bulkCreateInventoryUnitCosts: (data: any[]) => api.post('/inventory-unit-costs/bulk', data).then(res => res.data),
 
   // Suppliers
   getSuppliers: () => api.get('/suppliers').then(res => res.data),
@@ -144,7 +161,7 @@ export const apiService = {
 
   // Reference Generation
   getLocations: () => api.get('/locations').then(res => res.data),
-  getNextReference: (type: 'invoice' | 'quote' | 'order' | 'delivery' | 'customer' | 'supplier' | 'purchase-quote' | 'purchase-enquiry' | 'purchase-order' | 'receipt' | 'purchase-invoice' | 'debit-note' | 'credit-note' | 'goods-received-note') =>
+  getNextReference: (type: 'invoice' | 'quote' | 'order' | 'delivery' | 'customer' | 'supplier' | 'purchase-quote' | 'purchase-enquiry' | 'purchase-order' | 'receipt' | 'purchase-invoice' | 'debit-note' | 'credit-note' | 'goods-received-note' | 'inventory-transfer' | 'inventory-write-off') =>
     api.get(`/reference/next/${type}`).then(res => res.data.nextRef),
 
   // Accounts

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Save, X, ArrowRightLeft, Plus, Trash2, ArrowLeft } from 'lucide-react';
 import apiService from '../services/apiService';
-import { InventoryTransfer, Division, InventoryItem } from '../types';
+import { InventoryTransfer, InventoryLocation, InventoryItem } from '../types';
 
 const NewInventoryTransferView = () => {
   const navigate = useNavigate();
@@ -19,25 +19,43 @@ const NewInventoryTransferView = () => {
     items: [{ inventoryItem: '', qty: 0 }]
   });
 
-  const [availableDivisions, setAvailableDivisions] = useState<Division[]>([]);
+  const [availableLocations, setAvailableLocations] = useState<InventoryLocation[]>([]);
   const [availableItems, setAvailableItems] = useState<InventoryItem[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const [divs, items, nextRef] = await Promise.all([
-          apiService.getDivisions(),
+        const [locs, items, nextRef] = await Promise.all([
+          apiService.getLocations(),
           apiService.getItems(),
           !id ? apiService.getNextReference('inventory-transfer').catch(() => `TR-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`) : Promise.resolve('')
         ]);
-        setAvailableDivisions(divs);
+        setAvailableLocations(locs);
         setAvailableItems(items);
         
         if (id) {
           const transfer = await apiService.getInventoryTransfer(id);
           if (transfer) {
-            setFormData(transfer);
+            let formattedDate = transfer.date || '';
+            if (formattedDate) {
+              if (formattedDate.includes('T')) {
+                formattedDate = formattedDate.split('T')[0];
+              } else if (formattedDate.includes('.')) {
+                const datePart = formattedDate.split(' ')[0];
+                const [day, month, year] = datePart.split('.');
+                formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+              } else {
+                const dateObj = new Date(formattedDate);
+                if (!isNaN(dateObj.getTime())) {
+                  formattedDate = dateObj.toISOString().split('T')[0];
+                }
+              }
+            }
+            setFormData({
+              ...transfer,
+              date: formattedDate
+            });
           }
         } else if (nextRef) {
           setFormData(prev => ({ ...prev, reference: nextRef }));
@@ -78,6 +96,38 @@ const NewInventoryTransferView = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate quantities against available stock
+    if (formData.items) {
+      for (let i = 0; i < formData.items.length; i++) {
+        const item = formData.items[i];
+        if (!item.inventoryItem) continue;
+
+        // Find the matching item from available items
+        const matchingItem = availableItems.find(
+          mi => `${mi.itemCode} - ${mi.itemName}` === item.inventoryItem
+        );
+
+        if (matchingItem) {
+          const availableQty = Number(matchingItem.qtyOnHand) || 0;
+          if (item.qty <= 0) {
+            alert(
+              `Validation Error on Line ${i + 1}:\n` +
+              `Transfer quantity for "${matchingItem.itemName}" must be greater than 0.`
+            );
+            return;
+          }
+          if (item.qty > availableQty) {
+            alert(
+              `Validation Error on Line ${i + 1}:\n` +
+              `Transfer quantity for "${matchingItem.itemName}" (${item.qty}) cannot exceed the available quantity (${availableQty}).`
+            );
+            return;
+          }
+        }
+      }
+    }
+
     try {
       if (id) {
         await apiService.updateInventoryTransfer(id, formData);
@@ -187,8 +237,9 @@ const NewInventoryTransferView = () => {
                 className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-black text-blue-600 uppercase tracking-tighter"
               >
                 <option value="Draft">Draft</option>
+                <option value="Pending Approval">Pending Approval</option>
                 <option value="Approved">Approved</option>
-                <option value="Posted">Posted (Final)</option>
+                <option value="Ready to Dispatch">Ready to Dispatch</option>
                 <option value="Sent">Sent</option>
                 <option value="Received">Received</option>
               </select>
@@ -207,8 +258,8 @@ const NewInventoryTransferView = () => {
               >
                  <option value="">Select Source...</option>
                  <option value="General">General</option>
-                 {availableDivisions.map(div => (
-                   <option key={div.id} value={div.name}>{div.name}</option>
+                 {availableLocations.map(loc => (
+                   <option key={loc.id} value={loc.name}>{loc.name}</option>
                  ))}
                </select>
             </div>
@@ -223,8 +274,8 @@ const NewInventoryTransferView = () => {
               >
                  <option value="">Select Destination...</option>
                  <option value="General">General</option>
-                 {availableDivisions.map(div => (
-                   <option key={div.id} value={div.name}>{div.name}</option>
+                 {availableLocations.map(loc => (
+                   <option key={loc.id} value={loc.name}>{loc.name}</option>
                  ))}
                </select>
             </div>
@@ -262,49 +313,65 @@ const NewInventoryTransferView = () => {
           </div>
           
           <div className="space-y-4">
-            {formData.items?.map((item, index) => (
-              <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-gray-50/50 p-4 rounded-xl border border-gray-100 hover:border-indigo-200 transition-all">
-                <div className="md:col-span-1 text-[10px] font-black text-slate-300 pb-3 pl-2">
-                  {String(index + 1).padStart(2, '0')}
+            {formData.items?.map((item, index) => {
+              const matchingItem = availableItems.find(mi => `${mi.itemCode} - ${mi.itemName}` === item.inventoryItem);
+              const availableQty = matchingItem ? (Number(matchingItem.qtyOnHand) || 0) : 0;
+              const hasError = item.inventoryItem && (item.qty > availableQty || item.qty <= 0);
+
+              return (
+                <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-gray-50/50 p-4 rounded-xl border border-gray-100 hover:border-indigo-200 transition-all">
+                  <div className="md:col-span-1 text-[10px] font-black text-slate-300 pb-3 pl-2">
+                    {String(index + 1).padStart(2, '0')}
+                  </div>
+                  <div className="md:col-span-7 space-y-2">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Inventory Item</label>
+                    <select
+                      value={item.inventoryItem}
+                      onChange={(e) => handleItemChange(index, 'inventoryItem', e.target.value)}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none text-sm font-medium"
+                      required
+                    >
+                      <option value="">Select Item...</option>
+                      {availableItems.map(mi => (
+                        <option key={mi.id} value={`${mi.itemCode} - ${mi.itemName}`}>
+                          {mi.itemCode} - {mi.itemName} ({mi.qtyOnHand} available)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-3 space-y-2">
+                    <label className={`text-[9px] font-black uppercase tracking-widest ${hasError ? 'text-rose-500' : 'text-gray-400'}`}>Quantity</label>
+                    <input
+                      type="number"
+                      value={item.qty}
+                      onChange={(e) => handleItemChange(index, 'qty', Number(e.target.value))}
+                      className={`w-full px-4 py-2.5 bg-white border rounded-lg focus:ring-2 outline-none text-sm font-black transition-all ${
+                        hasError 
+                          ? 'border-rose-300 text-rose-600 focus:ring-rose-500/20 focus:border-rose-500' 
+                          : 'border-gray-200 text-indigo-600 focus:ring-blue-500/20 focus:border-blue-500'
+                      }`}
+                      required
+                    />
+                    {item.inventoryItem && item.qty > availableQty && (
+                      <p className="text-[10px] text-rose-500 font-bold">Exceeds stock ({availableQty} max)</p>
+                    )}
+                    {item.inventoryItem && item.qty <= 0 && (
+                      <p className="text-[10px] text-rose-500 font-bold">Must be greater than 0</p>
+                    )}
+                  </div>
+                  <div className="md:col-span-1 flex justify-center pb-1">
+                    <button
+                      type="button"
+                      onClick={() => removeItemRow(index)}
+                      disabled={(formData.items?.length || 0) <= 1}
+                      className="p-2.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all disabled:opacity-30"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 </div>
-                <div className="md:col-span-7 space-y-2">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Inventory Item</label>
-                  <select
-                    value={item.inventoryItem}
-                    onChange={(e) => handleItemChange(index, 'inventoryItem', e.target.value)}
-                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none text-sm font-medium"
-                    required
-                  >
-                    <option value="">Select Item...</option>
-                    {availableItems.map(mi => (
-                      <option key={mi.id} value={`${mi.itemCode} - ${mi.itemName}`}>
-                        {mi.itemCode} - {mi.itemName} ({mi.qtyOnHand} available)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="md:col-span-3 space-y-2">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Quantity</label>
-                  <input
-                    type="number"
-                    value={item.qty}
-                    onChange={(e) => handleItemChange(index, 'qty', Number(e.target.value))}
-                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none text-sm font-black text-indigo-600"
-                    required
-                  />
-                </div>
-                <div className="md:col-span-1 flex justify-center pb-1">
-                  <button
-                    type="button"
-                    onClick={() => removeItemRow(index)}
-                    disabled={(formData.items?.length || 0) <= 1}
-                    className="p-2.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all disabled:opacity-30"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <button
             type="button"

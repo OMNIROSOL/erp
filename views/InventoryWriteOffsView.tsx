@@ -16,6 +16,7 @@ const InventoryWriteOffsView = () => {
   const [sortConfig, setSortConfig] = useState<{ key: keyof InventoryWriteOff | null, direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
   const [writeOffs, setWriteOffs] = useState<InventoryWriteOff[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(apiService.getCurrentUser());
 
   useEffect(() => {
     const fetchData = async () => {
@@ -31,6 +32,47 @@ const InventoryWriteOffsView = () => {
     };
     fetchData();
   }, []);
+
+  useEffect(() => {
+    const handleUserUpdate = () => {
+      setCurrentUser(apiService.getCurrentUser());
+    };
+    window.addEventListener('user_sim_updated', handleUserUpdate);
+    return () => {
+      window.removeEventListener('user_sim_updated', handleUserUpdate);
+    };
+  }, []);
+
+  const getAvailableStatuses = (currentStatus: string, userRole: string) => {
+    const isAdmin = userRole === 'Admin';
+    const isManager = userRole === 'Manager' || isAdmin;
+
+    const status = currentStatus || 'Draft';
+
+    if (status === 'Draft') {
+      return ['Draft', 'Pending Approval'];
+    }
+    if (status === 'Pending Approval') {
+      if (isManager) {
+        return ['Pending Approval', 'Approved', 'Draft'];
+      }
+      return ['Pending Approval'];
+    }
+    if (status === 'Approved') {
+      return ['Approved'];
+    }
+    return [status];
+  };
+
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    try {
+      await apiService.updateInventoryWriteOffStatus(id, newStatus);
+      setWriteOffs(prev => prev.map(wo => wo.id === id ? { ...wo, status: newStatus } : wo));
+    } catch (err) {
+      console.error('Failed to update status:', err);
+      alert('Failed to update inventory write-off status');
+    }
+  };
 
   const columns = [
     { id: 'date', label: 'Date', visible: true },
@@ -186,13 +228,30 @@ const InventoryWriteOffsView = () => {
                 <td className="px-6 py-4 text-[12px] font-black text-rose-600">ZMW {(wo.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                 <td className="px-6 py-4 text-[12px] text-gray-500 italic">{wo.account}</td>
                 <td className="px-6 py-4">
-                  <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                    wo.status === 'Posted' ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' :
-                    wo.status === 'Approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                    'bg-slate-50 text-slate-600 border-slate-100'
-                  }`}>
-                    {wo.status || 'Approved'}
-                  </span>
+                  {(() => {
+                    const status = wo.status || 'Draft';
+                    const options = getAvailableStatuses(status, currentUser.role);
+                    const isDisabled = options.length <= 1;
+                    return (
+                      <select
+                        value={status}
+                        onChange={(e) => handleStatusChange(wo.id, e.target.value)}
+                        disabled={isDisabled}
+                        className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border outline-none transition-all shadow-sm ${
+                          isDisabled ? 'opacity-80 cursor-not-allowed' : 'cursor-pointer hover:scale-105'
+                        } ${
+                          status === 'Draft' ? 'bg-slate-100 text-slate-600 border-slate-200' :
+                          status === 'Pending Approval' ? 'bg-amber-50 text-amber-600 border-amber-200 animate-pulse' :
+                          status === 'Approved' ? 'bg-emerald-600 text-white border-emerald-700 font-bold' :
+                          'bg-slate-50 text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        {options.map(opt => (
+                          <option key={opt} value={opt} className="bg-white text-slate-900">{opt}</option>
+                        ))}
+                      </select>
+                    );
+                  })()}
                 </td>
 
               </tr>

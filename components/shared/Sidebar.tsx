@@ -148,6 +148,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed }) => {
       submenu: [
         { label: 'Chart of Accounts', path: '/accounts', id: 'accounts' },
         { label: 'Bank Accounts', path: '/account', id: 'bank-accounts' },
+        { label: 'Units of Measure', path: '/master/units', id: 'units' },
+        { label: 'Item Categories', path: '/master/categories', id: 'categories' },
       ]
     },
     { label: 'Receipts', icon: Receipt, path: '/receipts', id: 'receipts' },

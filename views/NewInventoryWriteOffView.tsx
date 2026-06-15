@@ -17,7 +17,7 @@ const NewInventoryWriteOffView = () => {
     amount: 0,
     account: '',
     description: '',
-    status: 'Approved'
+    status: 'Draft'
   });
 
   const [availableDivisions, setAvailableDivisions] = useState<Division[]>([]);
@@ -41,7 +41,25 @@ const NewInventoryWriteOffView = () => {
         if (id) {
           const writeOff = await apiService.getInventoryWriteOff(id);
           if (writeOff) {
-            setFormData(writeOff);
+            let formattedDate = writeOff.date || '';
+            if (formattedDate) {
+              if (formattedDate.includes('T')) {
+                formattedDate = formattedDate.split('T')[0];
+              } else if (formattedDate.includes('.')) {
+                const datePart = formattedDate.split(' ')[0];
+                const [day, month, year] = datePart.split('.');
+                formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+              } else {
+                const dateObj = new Date(formattedDate);
+                if (!isNaN(dateObj.getTime())) {
+                  formattedDate = dateObj.toISOString().split('T')[0];
+                }
+              }
+            }
+            setFormData({
+              ...writeOff,
+              date: formattedDate
+            });
           }
         } else if (nextRef) {
           setFormData(prev => ({ ...prev, reference: nextRef }));
@@ -210,8 +228,8 @@ const NewInventoryWriteOffView = () => {
                   className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-black text-blue-600 uppercase tracking-tighter"
                 >
                   <option value="Draft">Draft</option>
+                  <option value="Pending Approval">Pending Approval</option>
                   <option value="Approved">Approved</option>
-                  <option value="Posted">Posted (Final)</option>
                 </select>
               </div>
               <div className="space-y-2">

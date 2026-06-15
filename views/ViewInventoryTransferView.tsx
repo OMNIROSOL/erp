@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit, ArrowRightLeft, Calendar, MapPin, ClipboardList, AlertCircle } from 'lucide-react';
+import { 
+  ArrowLeft, Edit, ArrowRightLeft, Calendar, MapPin, 
+  ClipboardList, AlertCircle, Clock, Check, FileText, Send
+} from 'lucide-react';
 import apiService from '../services/apiService';
 
 const ViewInventoryTransferView = () => {
@@ -8,6 +11,7 @@ const ViewInventoryTransferView = () => {
   const { id } = useParams();
   const [transfer, setTransfer] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(apiService.getCurrentUser());
 
   useEffect(() => {
     const fetchTransfer = async () => {
@@ -24,6 +28,31 @@ const ViewInventoryTransferView = () => {
     };
     fetchTransfer();
   }, [id]);
+
+  useEffect(() => {
+    const handleUserUpdate = () => {
+      setCurrentUser(apiService.getCurrentUser());
+    };
+    window.addEventListener('user_sim_updated', handleUserUpdate);
+    return () => {
+      window.removeEventListener('user_sim_updated', handleUserUpdate);
+    };
+  }, []);
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (!transfer) return;
+    try {
+      setIsLoading(true);
+      await apiService.updateInventoryTransferStatus(transfer.id, newStatus);
+      const updated = await apiService.getInventoryTransfer(transfer.id);
+      setTransfer(updated);
+    } catch (err: any) {
+      console.error('Failed to update status:', err);
+      alert('Failed to update status: ' + err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -49,9 +78,36 @@ const ViewInventoryTransferView = () => {
     );
   }
 
+  // Workflow Logic Helper Variables
+  const userRole = currentUser.role;
+  const isAdmin = userRole === 'Admin';
+  const isManager = userRole === 'Manager' || isAdmin;
+  const currentStatus = transfer.status || 'Draft';
+
+  // Dynamic visual timeline setup
+  const timelineSteps = [
+    { key: 'Draft', label: 'Draft', desc: 'Transfer created in draft mode' },
+    { key: 'Pending Approval', label: 'Pending Approval', desc: 'Awaiting manager authorization' },
+    { key: 'Approved', label: 'Approved', desc: 'Approved. Warehouse staff preparing shipment' },
+    { key: 'Ready to Dispatch', label: 'Ready to Dispatch', desc: 'Internal Delivery Note prepared' },
+    { key: 'Sent', label: 'Sent', desc: 'Dispatched. Shipment in transit' },
+    { key: 'Received', label: 'Received', desc: 'Received. Internal GRN posted' }
+  ];
+
+  const getStepState = (stepKey: string) => {
+    const order = ['Draft', 'Pending Approval', 'Approved', 'Ready to Dispatch', 'Sent', 'Received'];
+    const stepIdx = order.indexOf(stepKey);
+    const currentIdx = order.indexOf(currentStatus);
+    
+    if (stepIdx < currentIdx) return 'completed';
+    if (stepIdx === currentIdx) return 'active';
+    return 'pending';
+  };
+
   return (
     <div className="p-8 space-y-8 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between border-b border-gray-100 pb-6">
+      {/* Header View */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-gray-100 pb-6 gap-4">
         <div className="flex items-center gap-4">
           <button 
             onClick={() => navigate('/inventory-transfers')}
@@ -64,16 +120,100 @@ const ViewInventoryTransferView = () => {
               <ArrowRightLeft size={12} />
               <span>Inventory Transfer Details</span>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">{transfer.reference}</h1>
-            <p className="text-sm text-gray-400 font-medium">{transfer.date}</p>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-gray-900">{transfer.reference}</h1>
+              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                currentStatus === 'Draft' ? 'bg-slate-100 text-slate-600 border-slate-200' :
+                currentStatus === 'Pending Approval' ? 'bg-amber-50 text-amber-600 border-amber-200 animate-pulse' :
+                currentStatus === 'Approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                currentStatus === 'Ready to Dispatch' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' :
+                currentStatus === 'Sent' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                'bg-emerald-600 text-white border-emerald-700'
+              }`}>
+                {currentStatus}
+              </span>
+            </div>
+            <p className="text-sm text-gray-400 font-medium mt-0.5">Date: {transfer.date}</p>
           </div>
         </div>
-        <button
-          onClick={() => navigate(`/inventory-transfers/edit/${transfer.id}`)}
-          className="px-8 py-2 bg-blue-600 text-[11px] font-black text-white rounded-md hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex items-center gap-2 uppercase tracking-widest"
-        >
-          <Edit size={14} /> Edit Transfer
-        </button>
+
+        {/* Dynamic Contextual Action Buttons */}
+        <div className="flex flex-wrap items-center gap-3">
+          {currentStatus !== 'Received' && (
+            <button
+              onClick={() => navigate(`/inventory-transfers/edit/${transfer.id}`)}
+              className="px-6 py-2 bg-white text-[11px] font-black text-gray-700 rounded-md hover:bg-gray-50 border border-gray-200 transition-all uppercase tracking-widest flex items-center gap-2 shadow-sm"
+            >
+              <Edit size={14} /> Edit
+            </button>
+          )}
+
+          {/* Draft state -> Submit for Approval */}
+          {currentStatus === 'Draft' && (
+            <button
+              onClick={() => handleStatusChange('Pending Approval')}
+              className="px-6 py-2 bg-indigo-600 text-[11px] font-black text-white rounded-md hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100 flex items-center gap-2 uppercase tracking-widest"
+            >
+              <Send size={14} /> Submit for Approval
+            </button>
+          )}
+
+          {/* Pending Approval state -> Manager Action */}
+          {currentStatus === 'Pending Approval' && (
+            <>
+              {isManager ? (
+                <>
+                  <button
+                    onClick={() => handleStatusChange('Draft')}
+                    className="px-6 py-2 bg-rose-600 text-[11px] font-black text-white rounded-md hover:bg-rose-700 transition-all shadow-md shadow-rose-100 flex items-center gap-2 uppercase tracking-widest"
+                  >
+                    Reject to Draft
+                  </button>
+                  <button
+                    onClick={() => handleStatusChange('Approved')}
+                    className="px-6 py-2 bg-emerald-600 text-[11px] font-black text-white rounded-md hover:bg-emerald-700 transition-all shadow-md shadow-emerald-100 flex items-center gap-2 uppercase tracking-widest"
+                  >
+                    <Check size={14} /> Approve Transfer
+                  </button>
+                </>
+              ) : (
+                <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-[10px] font-bold text-amber-700 uppercase tracking-widest">
+                  <Clock size={14} className="animate-spin text-amber-500" /> Awaiting Manager Approval
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Approved state -> Prepare Delivery Note */}
+          {currentStatus === 'Approved' && (
+            <button
+              onClick={() => handleStatusChange('Ready to Dispatch')}
+              className="px-6 py-2 bg-blue-600 text-[11px] font-black text-white rounded-md hover:bg-blue-700 transition-all shadow-md shadow-blue-100 flex items-center gap-2 uppercase tracking-widest"
+            >
+              <FileText size={14} /> Prepare Delivery Note
+            </button>
+          )}
+
+          {/* Ready to Dispatch state -> Dispatch shipment */}
+          {currentStatus === 'Ready to Dispatch' && (
+            <button
+              onClick={() => handleStatusChange('Sent')}
+              className="px-6 py-2 bg-indigo-600 text-[11px] font-black text-white rounded-md hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100 flex items-center gap-2 uppercase tracking-widest"
+            >
+              <Send size={14} /> Mark as Sent (Ship)
+            </button>
+          )}
+
+          {/* Sent state -> Receive shipment */}
+          {currentStatus === 'Sent' && (
+            <button
+              onClick={() => handleStatusChange('Received')}
+              className="px-6 py-2 bg-emerald-600 text-[11px] font-black text-white rounded-md hover:bg-emerald-700 transition-all shadow-md shadow-emerald-100 flex items-center gap-2 uppercase tracking-widest"
+            >
+              <Check size={14} /> Mark as Received (Post GRN)
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -116,13 +256,7 @@ const ViewInventoryTransferView = () => {
                   </div>
                   <div>
                     <label className="text-[9px] font-black uppercase tracking-widest text-slate-300 block mb-0.5">Status</label>
-                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                      transfer.status === 'Received' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
-                      transfer.status === 'Sent' ? 'bg-blue-50 text-blue-600 border-blue-100' : 
-                      'bg-slate-50 text-slate-600 border-slate-100'
-                    }`}>
-                      {transfer.status}
-                    </span>
+                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wide">{currentStatus}</span>
                   </div>
                 </div>
               </div>
@@ -147,7 +281,7 @@ const ViewInventoryTransferView = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {transfer.items.map((item, index) => (
+                  {transfer.items && transfer.items.map((item: any, index: number) => (
                     <tr key={index}>
                       <td className="py-4">
                         <div className="text-sm font-bold text-slate-700">{item.inventoryItem}</div>
@@ -163,27 +297,78 @@ const ViewInventoryTransferView = () => {
           </div>
         </div>
 
+        {/* Right Sidebar: Timeline & Generated Documents */}
         <div className="space-y-8">
-          <div className="bg-slate-900 p-8 rounded-3xl shadow-2xl text-white space-y-6">
-            <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 border-b border-white/10 pb-4">Transfer Timeline</h2>
+          {/* Timeline */}
+          <div className="bg-slate-900 p-8 rounded-3xl shadow-xl text-white space-y-6">
+            <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 border-b border-white/10 pb-4">Transfer Workflow</h2>
             <div className="relative space-y-8 before:absolute before:left-4 before:top-2 before:bottom-2 before:w-px before:bg-white/10">
-              <div className="relative pl-10">
-                <div className="absolute left-3 top-1 w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]"></div>
-                <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Created</div>
-                <div className="text-xs font-bold text-white">{transfer.date}</div>
-              </div>
-              <div className="relative pl-10">
-                <div className={`absolute left-3 top-1 w-2 h-2 rounded-full ${transfer.status === 'Draft' ? 'bg-slate-700' : 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]'}`}></div>
-                <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Sent</div>
-                <div className="text-xs font-bold text-white">{transfer.status === 'Draft' ? 'Pending' : transfer.date}</div>
-              </div>
-              <div className="relative pl-10">
-                <div className={`absolute left-3 top-1 w-2 h-2 rounded-full ${transfer.status === 'Received' ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}`}></div>
-                <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Received</div>
-                <div className="text-xs font-bold text-white">{transfer.status === 'Received' ? transfer.date : 'Awaiting Arrival'}</div>
-              </div>
+              {timelineSteps.map((step) => {
+                const state = getStepState(step.key);
+                return (
+                  <div key={step.key} className="relative pl-10">
+                    {state === 'completed' && (
+                      <div className="absolute left-[9px] top-1 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center shadow-[0_0_8px_rgba(16,185,129,0.4)]">
+                        <Check size={10} className="text-white" />
+                      </div>
+                    )}
+                    {state === 'active' && (
+                      <div className="absolute left-[11px] top-1.5 w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)] animate-ping"></div>
+                    )}
+                    {state === 'active' && (
+                      <div className="absolute left-[11px] top-1.5 w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]"></div>
+                    )}
+                    {state === 'pending' && (
+                      <div className="absolute left-[12px] top-2 w-2 h-2 rounded-full bg-slate-700"></div>
+                    )}
+
+                    <div className={`text-[9px] font-black uppercase tracking-widest mb-0.5 ${
+                      state === 'active' ? 'text-blue-400 font-bold' : 
+                      state === 'completed' ? 'text-emerald-400' : 'text-slate-400'
+                    }`}>
+                      {step.label}
+                    </div>
+                    <div className={`text-xs ${state === 'pending' ? 'text-slate-500' : 'text-slate-200 font-semibold'}`}>
+                      {step.desc}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
+
+          {/* Generated Internal Documents */}
+          {(transfer.deliveryNoteId || transfer.goodsReceivedNoteId) && (
+            <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-sm space-y-4">
+              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 border-b border-gray-100 pb-4">Internal Documents</h2>
+              <div className="space-y-3">
+                {transfer.deliveryNoteId && (
+                  <button
+                    onClick={() => navigate(`/delivery-notes/view/${transfer.deliveryNoteId}`)}
+                    className="w-full flex items-center justify-between p-3 rounded-xl bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100/50 text-indigo-700 text-xs font-bold transition-all text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileText size={16} className="text-indigo-500" />
+                      <span>Internal Delivery Note</span>
+                    </div>
+                    <span className="text-[9px] bg-indigo-100 px-2 py-0.5 rounded text-indigo-800 font-bold">INTDN</span>
+                  </button>
+                )}
+                {transfer.goodsReceivedNoteId && (
+                  <button
+                    onClick={() => navigate(`/goods-received-notes/view/${transfer.goodsReceivedNoteId}`)}
+                    className="w-full flex items-center justify-between p-3 rounded-xl bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-100/50 text-emerald-700 text-xs font-bold transition-all text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileText size={16} className="text-emerald-500" />
+                      <span>Internal GRN Posted</span>
+                    </div>
+                    <span className="text-[9px] bg-emerald-100 px-2 py-0.5 rounded text-emerald-800 font-bold">INTGRN</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

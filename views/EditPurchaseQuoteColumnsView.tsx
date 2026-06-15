@@ -13,7 +13,6 @@ const EditPurchaseQuoteColumnsView = () => {
             { id: 'Reference', label: 'Reference', visible: true },
             { id: 'Supplier', label: 'Supplier', visible: true },
             { id: 'Description', label: 'Description', visible: false },
-            { id: 'Amount', label: 'Amount', visible: true },
             { id: 'Status', label: 'Status', visible: true },
         ];
 

@@ -42,7 +42,6 @@ const PurchaseQuotesView = () => {
             'Reference': true,
             'Supplier': true,
             'Description': true,
-            'Amount': true,
             'Status': true,
             'Timestamp': true
         };
@@ -57,7 +56,6 @@ const PurchaseQuotesView = () => {
                     'reference': 'Reference',
                     'supplier': 'Supplier',
                     'description': 'Description',
-                    'amount': 'Amount',
                     'status': 'Status',
                     'timestamp': 'Timestamp'
                 };
@@ -86,7 +84,6 @@ const PurchaseQuotesView = () => {
                         'reference': 'Reference',
                         'supplier': 'Supplier',
                         'description': 'Description',
-                        'amount': 'Amount',
                         'status': 'Status',
                         'timestamp': 'Timestamp'
                     };
@@ -123,7 +120,6 @@ const PurchaseQuotesView = () => {
             { id: 'Reference', label: 'Reference', visible: newVisible['Reference'] ?? true },
             { id: 'Supplier', label: 'Supplier', visible: newVisible['Supplier'] ?? true },
             { id: 'Description', label: 'Description', visible: newVisible['Description'] ?? true },
-            { id: 'Amount', label: 'Amount', visible: newVisible['Amount'] ?? true },
             { id: 'Status', label: 'Status', visible: newVisible['Status'] ?? true },
             { id: 'Timestamp', label: 'Timestamp', visible: newVisible['Timestamp'] ?? false },
         ];
@@ -171,9 +167,9 @@ const PurchaseQuotesView = () => {
     };
 
     const copyToClipboard = (data: any[]) => {
-        const header = "Issue Date\tReference\tSupplier\tDescription\tAmount\tStatus\tTimestamp";
+        const header = "Issue Date\tReference\tSupplier\tDescription\tStatus\tTimestamp";
         const rows = data.map(q =>
-            `${q.issueDate}\t${q.reference}\t${q.supplier}\t${q.description || ''}\t${q.amount}\t${q.status}\t${q.timestamp || ''}`
+            `${q.issueDate}\t${q.reference}\t${q.supplier}\t${q.description || ''}\t${q.status}\t${q.timestamp || ''}`
         ).join('\n');
         const fullText = `${header}\n${rows}`;
 
@@ -230,9 +226,6 @@ const PurchaseQuotesView = () => {
             if (sortColumn === 'Issue Date') {
                 valA = (a.issueDate || '').split('.').reverse().join('-');
                 valB = (b.issueDate || '').split('.').reverse().join('-');
-            } else if (sortColumn === 'Amount') {
-                valA = parseFloat(a.amount || 0);
-                valB = parseFloat(b.amount || 0);
             }
             if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
             if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
@@ -240,14 +233,7 @@ const PurchaseQuotesView = () => {
         });
     }, [searchQuery, purchaseQuotes, supplierName, statusFilter, sortColumn, sortDirection, refreshTrigger]);
 
-    const currencyTotals = useMemo(() => {
-        const totals: Record<string, number> = {};
-        filteredData.forEach(q => {
-            const curr = q.currency || 'ZMW';
-            totals[curr] = (totals[curr] || 0) + (parseFloat(q.amount as any) || 0);
-        });
-        return totals;
-    }, [filteredData]);
+
 
     const paginatedData = useMemo(() => {
         return filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -351,19 +337,7 @@ const PurchaseQuotesView = () => {
                 </span>
             )
         },
-        {
-            id: 'Amount',
-            header: <div className="flex items-center justify-end cursor-pointer group hover:text-indigo-600 transition-colors" onClick={() => handleSort('Amount')}>Amount <SortIcon column="Amount" /></div>,
-            className: 'whitespace-nowrap text-right',
-            accessor: (o: any) => (
-                <div className="text-right">
-                    <span className="text-[10px] text-slate-400 font-bold mr-1">{o.currency || 'ZMW'}</span>
-                    <span className="font-black text-slate-900">
-                        {parseFloat(o.amount as any || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </span>
-                </div>
-            )
-        },
+
         {
             id: 'Status',
             header: <div className="flex items-center cursor-pointer group hover:text-indigo-600 transition-colors" onClick={() => handleSort('Status')}>Status <SortIcon column="Status" /></div>,
@@ -504,29 +478,6 @@ const PurchaseQuotesView = () => {
                                 <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Fetching purchase enquiries...</p>
                             </div>
                         ) : undefined
-                    }
-                    tableFooter={
-                        <tr className="bg-slate-50/50">
-                            {columns.map(col => {
-                                if (col.id === 'Reference') {
-                                    return (
-                                        <td key={`total-label-${col.id}`} className="px-6 py-4 text-left">
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Grand Totals:</span>
-                                        </td>
-                                    );
-                                }
-                                return (
-                                    <td key={col.id} className="px-6 py-4 text-right font-black">
-                                        {col.id === 'Amount' && Object.keys(currencyTotals).map(cur => (
-                                            <div key={cur} className="flex items-center justify-end gap-1.5">
-                                                <span className="text-[9px] text-slate-400 uppercase">{cur}</span>
-                                                <span className="text-[12px] underline decoration-slate-200 underline-offset-4">{currencyTotals[cur].toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                            </div>
-                                        ))}
-                                    </td>
-                                );
-                            })}
-                        </tr>
                     }
                 />
             </div>

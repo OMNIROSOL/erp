@@ -497,16 +497,11 @@ const ViewPurchaseQuoteView = () => {
                                     {dOptions.columnLineNumber !== false && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-left w-12">#</th>}
                                     <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-left">Item</th>
                                     <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-left">Description</th>
-                                    <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Qty</th>
-                                    <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Unit Price</th>
-                                    {dOptions.columnDiscount && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Discount {dOptions.columnDiscountType === 'Percentage' ? '(%)' : ''}</th>}
-                                    {dOptions.columnTaxAmount !== false && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tax Amount</th>}
-                                    {dOptions.columnTotal !== false && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total</th>}
+                                    <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Qty</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                                 {quote.items && quote.items.length > 0 ? quote.items.map((item: any, idx: number) => {
-                                    const calc = totals.lineCalcs[idx];
                                     return (
                                         <tr key={idx}>
                                             {dOptions.columnLineNumber !== false && <td className="px-4 py-4 text-slate-400 font-medium text-[12px]">{idx + 1}</td>}
@@ -519,26 +514,6 @@ const ViewPurchaseQuoteView = () => {
                                                 <p className="text-gray-500">{item.description || '-'}</p>
                                             </td>
                                             <td className="px-4 py-4 text-right font-medium">{item.qty} <span className="text-[10px] text-slate-400 font-bold ml-1 uppercase">{item.unit || ''}</span></td>
-                                            <td className="px-4 py-4 text-right font-medium">{(parseFloat(item.unitPrice as any) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                            {dOptions.columnDiscount && (
-                                                <td className="px-4 py-4 text-right font-medium text-slate-400">
-                                                    {item.discount && parseFloat(item.discount) !== 0 ? (
-                                                        dOptions.columnDiscountType === 'Percentage' 
-                                                            ? `${item.discount}%` 
-                                                            : (parseFloat(item.discount).toLocaleString(undefined, { minimumFractionDigits: 2 }))
-                                                    ) : '—'}
-                                                </td>
-                                            )}
-                                            {dOptions.columnTaxAmount !== false && (
-                                                <td className="px-4 py-4 text-right font-medium text-slate-400">
-                                                    {calc?.taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                </td>
-                                            )}
-                                            {dOptions.columnTotal !== false && (
-                                                <td className="px-4 py-4 text-right font-semibold">
-                                                    {calc?.grossTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                </td>
-                                            )}
                                         </tr>
                                     );
                                 }) : (
@@ -547,45 +522,13 @@ const ViewPurchaseQuoteView = () => {
                                         <td className="px-4 py-5 font-semibold text-slate-900">General Item</td>
                                         <td className="px-4 py-5 font-medium text-slate-500">{quote.description || '-'}</td>
                                         <td className="px-4 py-5 text-right font-medium">1</td>
-                                        <td className="px-4 py-5 text-right font-medium">{(parseFloat(quote.quoteAmount as any) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                        <td className="px-4 py-5 text-right font-semibold">{(parseFloat(quote.quoteAmount as any) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                     </tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
 
-                    {/* Bottom Area: Totals */}
-                    <div className="flex justify-end items-start gap-12">
-                        {/* Summary Section */}
-                        <div className="w-80 space-y-3">
-                            <div className="flex justify-between items-center text-gray-500">
-                                <span className="text-[11px] font-bold uppercase tracking-widest">{dOptions.amountsAreTaxInclusive ? 'Subtotal (Excl. Tax)' : 'Subtotal'}</span>
-                                <span className="font-semibold tabular-nums">{totals.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-gray-500 pb-2 border-b border-gray-50">
-                                <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Tax Amount</span>
-                                <span className="font-semibold tabular-nums">{totals.tax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                            </div>
-                            {dOptions.withholdingTax && (
-                                <div className="flex justify-between items-center text-rose-500">
-                                    <span className="text-[11px] font-bold uppercase tracking-widest">Withholding Tax</span>
-                                    <span className="font-semibold tabular-nums">-{totals.whtAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                </div>
-                            )}
-                            {dOptions.hideTotalAmount !== true && (
-                                <div className="flex justify-between items-center bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100/50 mt-4 print-bg-slate-50">
-                                    <span className="text-[12px] font-black uppercase tracking-[0.3em] text-indigo-400">Total</span>
-                                    <div className="text-right">
-                                        <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">{quote.currency?.split(' ')[0] || 'ZMW'}</p>
-                                        <p className="text-2xl font-bold text-slate-900 tracking-tighter tabular-nums">
-                                            {totals.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
+
 
                     {/* Footers Section */}
                     {(dOptions.footers || dOptions.footer || quote.footer) && (dOptions.footerValue || quote.footer) && (

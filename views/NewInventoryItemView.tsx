@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Save, X, Package, Trash2, ArrowLeft, HelpCircle, Plus } from 'lucide-react';
-import { InventoryItem, Division } from '../types';
-import apiService from '../services/apiService';
+import { InventoryItem, Division, Unit, ItemCategory } from '../types';
+import { apiService } from '../services/apiService';
 
 const NewInventoryItemView = () => {
   const navigate = useNavigate();
@@ -34,12 +34,20 @@ const NewInventoryItemView = () => {
   });
 
   const [availableDivisions, setAvailableDivisions] = useState<Division[]>([]);
+  const [availableUnits, setAvailableUnits] = useState<Unit[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<ItemCategory[]>([]);
 
   React.useEffect(() => {
     const loadData = async () => {
       try {
         const divs = await apiService.getDivisions();
         setAvailableDivisions(divs);
+
+        const unitsData = await apiService.getUnits();
+        setAvailableUnits(unitsData);
+
+        const categoriesData = await apiService.getItemCategories();
+        setAvailableCategories(categoriesData);
 
         if (isEdit) {
           const items = await apiService.getItems();
@@ -74,6 +82,7 @@ const NewInventoryItemView = () => {
         itemName: formData.itemName,
         description: formData.description,
         unitName: formData.unitName,
+        category: formData.category,
         sellingPrice: parseFloat(formData.sellingPrice as any || 0),
         purchasePrice: parseFloat(formData.purchasePrice as any || 0),
         qtyOnHand: parseFloat(formData.qtyOnHand as any || 0),
@@ -91,6 +100,22 @@ const NewInventoryItemView = () => {
       alert('Failed to save item: ' + (err.response?.data?.error || err.message));
     }
   };
+
+  const handleDelete = async () => {
+    if (!id) return;
+    if (!window.confirm(`Are you sure you want to delete this inventory item: "${formData.itemName || 'this item'}"?`)) {
+      return;
+    }
+    try {
+      await apiService.deleteItem(id);
+      navigate('/inventory-items');
+    } catch (err: any) {
+      console.error('Failed to delete item:', err);
+      const errorMsg = err.response?.data?.error || err.message || 'Unknown error occurred';
+      alert(`Failed to delete item: ${errorMsg}`);
+    }
+  };
+
 
   return (
     <div className="p-8 space-y-8 animate-in fade-in duration-500 bg-slate-50/30 min-h-screen">
@@ -241,14 +266,18 @@ const NewInventoryItemView = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Unit Name</label>
-              <input
-                type="text"
+              <select
                 name="unitName"
                 value={formData.unitName}
                 onChange={handleChange}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-medium"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-medium font-bold text-slate-700"
                 required
-              />
+              >
+                <option value="">Select Unit</option>
+                {availableUnits.map(unit => (
+                  <option key={unit.id} value={unit.name}>{unit.name}</option>
+                ))}
+              </select>
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Valuation Method</label>
@@ -280,14 +309,17 @@ const NewInventoryItemView = () => {
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Category</label>
-              <input
-                type="text"
+              <select
                 name="category"
                 value={formData.category}
                 onChange={handleChange}
-                placeholder="e.g. Spares"
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-medium"
-              />
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-medium font-bold text-slate-700"
+              >
+                <option value="">Select Category</option>
+                {availableCategories.map(cat => (
+                  <option key={cat.id} value={cat.name}>{cat.name}</option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
@@ -418,6 +450,7 @@ const NewInventoryItemView = () => {
           <div className="flex justify-end pt-4">
             <button
               type="button"
+              onClick={handleDelete}
               className="group flex items-center gap-2 text-rose-400 font-bold text-[11px] uppercase tracking-widest hover:text-rose-600 transition-all"
             >
               <Trash2 size={16} className="group-hover:scale-110 transition-transform" /> Delete Item

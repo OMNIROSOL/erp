@@ -96,6 +96,8 @@ import EditPurchaseInvoiceColumnsView from './views/EditPurchaseInvoiceColumnsVi
 
 // Inventory Imports
 import InventoryItemsView from './views/InventoryItemsView';
+import UnitsView from './views/UnitsView';
+import ItemCategoriesView from './views/ItemCategoriesView';
 import NewInventoryItemView from './views/NewInventoryItemView';
 import ViewInventoryItemView from './views/ViewInventoryItemView';
 import InventoryTransfersView from './views/InventoryTransfersView';
@@ -213,6 +215,8 @@ const App = () => {
           <Route path="/accounts/new" element={<NewAccountView />} />
           <Route path="/accounts/edit/:id" element={<NewAccountView />} />
           <Route path="/accounts/view/:id" element={<ViewAccountView />} />
+          <Route path="/master/units" element={<UnitsView />} />
+          <Route path="/master/categories" element={<ItemCategoriesView />} />
 
           {/* Bank & Cash Routes */}
           <Route path="/account" element={<BankAccountsView />} />

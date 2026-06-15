@@ -16,6 +16,7 @@ const InventoryTransfersView = () => {
   const [sortConfig, setSortConfig] = useState<{ key: keyof InventoryTransfer | null, direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
   const [transfers, setTransfers] = useState<InventoryTransfer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(apiService.getCurrentUser());
 
   useEffect(() => {
     const fetchTransfers = async () => {
@@ -31,6 +32,54 @@ const InventoryTransfersView = () => {
     };
     fetchTransfers();
   }, []);
+
+  useEffect(() => {
+    const handleUserUpdate = () => {
+      setCurrentUser(apiService.getCurrentUser());
+    };
+    window.addEventListener('user_sim_updated', handleUserUpdate);
+    return () => {
+      window.removeEventListener('user_sim_updated', handleUserUpdate);
+    };
+  }, []);
+
+  const getAvailableStatuses = (currentStatus: string, userRole: string) => {
+    const isAdmin = userRole === 'Admin';
+    const isManager = userRole === 'Manager' || isAdmin;
+
+    if (currentStatus === 'Draft') {
+      return ['Draft', 'Pending Approval'];
+    }
+    if (currentStatus === 'Pending Approval') {
+      if (isManager) {
+        return ['Pending Approval', 'Approved', 'Draft'];
+      }
+      return ['Pending Approval'];
+    }
+    if (currentStatus === 'Approved') {
+      return ['Approved', 'Ready to Dispatch'];
+    }
+    if (currentStatus === 'Ready to Dispatch') {
+      return ['Ready to Dispatch', 'Sent'];
+    }
+    if (currentStatus === 'Sent') {
+      return ['Sent', 'Received'];
+    }
+    if (currentStatus === 'Received') {
+      return ['Received'];
+    }
+    return [currentStatus];
+  };
+
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    try {
+      await apiService.updateInventoryTransferStatus(id, newStatus);
+      setTransfers(prev => prev.map(tr => tr.id === id ? { ...tr, status: newStatus } : tr));
+    } catch (err) {
+      console.error('Failed to update status:', err);
+      alert('Failed to update inventory transfer status');
+    }
+  };
 
   const columns = [
     { id: 'date', label: 'Date', visible: true },
@@ -168,15 +217,32 @@ const InventoryTransfersView = () => {
                 <td className="px-6 py-4 text-[12px] font-medium text-gray-600">{tr.toLocation}</td>
                 <td className="px-6 py-4 text-[12px] text-gray-500 truncate max-w-[250px]">{tr.description}</td>
                 <td className="px-6 py-4">
-                  <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                    tr.status === 'Posted' ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' :
-                    tr.status === 'Approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                    tr.status === 'Received' ? 'bg-emerald-50 text-emerald-600 border-emerald-100 opacity-70' : 
-                    tr.status === 'Sent' ? 'bg-blue-50 text-blue-600 border-blue-100' : 
-                    'bg-slate-50 text-slate-600 border-slate-100'
-                  }`}>
-                    {tr.status}
-                  </span>
+                  {(() => {
+                    const options = getAvailableStatuses(tr.status || 'Draft', currentUser.role);
+                    const isDisabled = options.length <= 1;
+                    return (
+                      <select
+                        value={tr.status || 'Draft'}
+                        onChange={(e) => handleStatusChange(tr.id, e.target.value)}
+                        disabled={isDisabled}
+                        className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border outline-none transition-all shadow-sm ${
+                          isDisabled ? 'opacity-80 cursor-not-allowed' : 'cursor-pointer hover:scale-105'
+                        } ${
+                          tr.status === 'Draft' ? 'bg-slate-100 text-slate-600 border-slate-200' :
+                          tr.status === 'Pending Approval' ? 'bg-amber-50 text-amber-600 border-amber-200 animate-pulse' :
+                          tr.status === 'Approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                          tr.status === 'Ready to Dispatch' ? 'bg-indigo-50 text-indigo-600 border-indigo-200 font-bold' : 
+                          tr.status === 'Sent' ? 'bg-blue-50 text-blue-600 border-blue-200' : 
+                          tr.status === 'Received' ? 'bg-emerald-600 text-white border-emerald-700' :
+                          'bg-slate-50 text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        {options.map(opt => (
+                          <option key={opt} value={opt} className="bg-white text-slate-900">{opt}</option>
+                        ))}
+                      </select>
+                    );
+                  })()}
                 </td>
 
               </tr>

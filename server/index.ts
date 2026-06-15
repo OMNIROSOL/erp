@@ -60,11 +60,64 @@ const formatDateTime = (date: Date | null | undefined) => {
 const parseDate = (d: any) => {
   if (!d) return undefined;
   if (typeof d === 'string' && d.includes('.')) {
-    const [day, month, year] = d.split('.').map(Number);
-    return new Date(year, month - 1, day);
+    const datePart = d.split(' ')[0];
+    const [day, month, year] = datePart.split('.').map(Number);
+    const date = new Date(year, month - 1, day);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
   }
   const date = new Date(d);
   return isNaN(date.getTime()) ? undefined : date;
+};
+
+const adjustItemInventory = async (
+  itemId: string,
+  qtyChange: number,
+  transactionType: string,
+  sourceDocumentId: string | null,
+  locationNameOrId?: string | null,
+  tx: any = prisma
+) => {
+  console.log(`[INVENTORY ADJUST] ItemID: ${itemId}, QtyChange: ${qtyChange}, Type: ${transactionType}, SrcDoc: ${sourceDocumentId}, Location: ${locationNameOrId}`);
+  
+  // 1. Update the Item's qtyOnHand
+  const updatedItem = await tx.item.update({
+    where: { id: itemId },
+    data: {
+      qtyOnHand: {
+        increment: qtyChange
+      }
+    }
+  });
+  console.log(`[INVENTORY ADJUST] New qtyOnHand for item ${itemId}: ${updatedItem.qtyOnHand}`);
+
+  // 2. Resolve locationId
+  let locationId = '47f9e354-a859-425e-9b2a-235d52805925'; // Default Main Warehouse
+  if (locationNameOrId) {
+    const loc = await tx.location.findFirst({
+      where: {
+        OR: [
+          { id: locationNameOrId.length === 36 ? locationNameOrId : undefined },
+          { name: locationNameOrId }
+        ]
+      }
+    });
+    if (loc) {
+      locationId = loc.id;
+    }
+  }
+
+  // 3. Create the StockLedger entry
+  await tx.stockLedger.create({
+    data: {
+      itemId,
+      locationId,
+      qtyChange,
+      transactionType,
+      sourceDocumentId
+    }
+  });
 };
 
 app.use(cors());
@@ -103,15 +156,14 @@ app.patch('/api/delivery-notes/:id', async (req, res) => {
   console.log(`PATCH DELIVERY NOTE STATUS HIT: ID=${id}, Status=${status}`);
   try {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-    console.log(`ID type check: isUuid=${isUuid}`);
-
     const existing = await prisma.deliveryNote.findFirst({
       where: {
         OR: [
           { id: isUuid ? id : undefined },
           { reference: id }
         ]
-      }
+      },
+      include: { items: true }
     });
 
     if (!existing) {
@@ -119,13 +171,46 @@ app.patch('/api/delivery-notes/:id', async (req, res) => {
       return res.status(404).json({ error: 'Delivery note not found' });
     }
 
-    console.log(`Found existing note: ${existing.id} (${existing.reference})`);
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Revert old stock deduction if status was 'Delivered'
+      if (existing.status === 'Delivered' && status !== 'Delivered') {
+        for (const item of existing.items) {
+          if (item.itemId) {
+            await tx.item.update({
+              where: { id: item.itemId },
+              data: { qtyOnHand: { increment: Number(item.qty) } }
+            });
+          }
+        }
+        await tx.stockLedger.deleteMany({ where: { sourceDocumentId: existing.id } });
+      }
 
-    const result = await prisma.deliveryNote.update({
-      where: { id: existing.id },
-      data: { status }
+      // 2. Perform the update
+      const updatedDn = await tx.deliveryNote.update({
+        where: { id: existing.id },
+        data: { status },
+        include: { items: true }
+      });
+
+      // 3. Apply new stock deduction if status is 'Delivered'
+      if (status === 'Delivered' && existing.status !== 'Delivered') {
+        for (const item of updatedDn.items) {
+          if (item.itemId) {
+            await adjustItemInventory(
+              item.itemId,
+              -Number(item.qty),
+              'Delivery Note',
+              updatedDn.id,
+              updatedDn.inventoryLocation,
+              tx
+            );
+          }
+        }
+      }
+
+      return updatedDn;
     });
-    console.log('PATCH DELIVERY NOTE STATUS SUCCESS:', result.id);
+
     res.json(result);
   } catch (err: any) {
     console.error('PATCH DELIVERY NOTE STATUS ERROR:', err);
@@ -349,10 +434,10 @@ app.get('/api/items/:id', async (req, res) => {
 });
 
 app.post('/api/items', async (req, res) => {
-  const { itemCode, itemName, unitName, sellingPrice, purchasePrice, qtyOnHand, description, imageUrl } = req.body;
+  const { itemCode, itemName, unitName, sellingPrice, purchasePrice, qtyOnHand, description, imageUrl, category } = req.body;
   try {
     const result = await prisma.item.create({
-      data: { itemCode, itemName, unitName, sellingPrice, purchasePrice, qtyOnHand, description, imageUrl }
+      data: { itemCode, itemName, unitName, sellingPrice, purchasePrice, qtyOnHand, description, imageUrl, category }
     });
     res.json(result);
   } catch (err) {
@@ -362,15 +447,31 @@ app.post('/api/items', async (req, res) => {
 
 app.put('/api/items/:id', async (req, res) => {
   const { id } = req.params;
-  const { itemCode, itemName, unitName, sellingPrice, purchasePrice, qtyOnHand, description, imageUrl } = req.body;
+  const { itemCode, itemName, unitName, sellingPrice, purchasePrice, qtyOnHand, description, imageUrl, category } = req.body;
   try {
     const result = await prisma.item.update({
       where: { id },
-      data: { itemCode, itemName, unitName, sellingPrice, purchasePrice, qtyOnHand, description, imageUrl }
+      data: { itemCode, itemName, unitName, sellingPrice, purchasePrice, qtyOnHand, description, imageUrl, category }
     });
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.delete('/api/items/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.item.delete({
+      where: { id }
+    });
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Error deleting item:', err);
+    if (err.code === 'P2003') {
+      return res.status(400).json({ error: 'Cannot delete item because it is referenced in transactions or other records.' });
+    }
+    res.status(500).json({ error: err.message || 'Failed to delete item' });
   }
 });
 
@@ -407,6 +508,215 @@ app.delete('/api/divisions/:id', async (req, res) => {
     });
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// --- UNITS OF MEASURE ---
+app.get('/api/units', async (req, res) => {
+  try {
+    const units = await prisma.unit.findMany({
+      orderBy: { name: 'asc' }
+    });
+    res.json(units);
+  } catch (err: any) {
+    console.error('Error fetching units:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/units', async (req, res) => {
+  const { name, description } = req.body;
+  try {
+    const result = await prisma.unit.create({
+      data: { name, description }
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.put('/api/units/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, description } = req.body;
+  try {
+    const result = await prisma.unit.update({
+      where: { id },
+      data: { name, description }
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.delete('/api/units/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.unit.delete({
+      where: { id }
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// --- ITEM CATEGORIES ---
+app.get('/api/item-categories', async (req, res) => {
+  try {
+    const categories = await prisma.itemCategory.findMany({
+      orderBy: { name: 'asc' }
+    });
+    res.json(categories);
+  } catch (err: any) {
+    console.error('Error fetching categories:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/item-categories', async (req, res) => {
+  const { name, description } = req.body;
+  try {
+    const result = await prisma.itemCategory.create({
+      data: { name, description }
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.put('/api/item-categories/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, description } = req.body;
+  try {
+    const result = await prisma.itemCategory.update({
+      where: { id },
+      data: { name, description }
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.delete('/api/item-categories/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.itemCategory.delete({
+      where: { id }
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// --- INVENTORY UNIT COSTS ---
+app.get('/api/inventory-unit-costs', async (req, res) => {
+  try {
+    const costs = await prisma.inventoryUnitCost.findMany({
+      orderBy: { date: 'desc' }
+    });
+    res.json(costs);
+  } catch (err: any) {
+    console.error('Error fetching unit costs:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/inventory-unit-costs', async (req, res) => {
+  const { date, itemId, itemName, unitCost, marginPercent, minSellingPrice, category, division } = req.body;
+  try {
+    const result = await prisma.inventoryUnitCost.create({
+      data: {
+        date: parseDate(date) || new Date(),
+        itemId,
+        itemName,
+        unitCost: parseFloat(unitCost) || 0,
+        marginPercent: marginPercent !== undefined ? parseFloat(marginPercent) : null,
+        minSellingPrice: parseFloat(minSellingPrice) || 0,
+        category,
+        division
+      }
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.put('/api/inventory-unit-costs/:id', async (req, res) => {
+  const { id } = req.params;
+  const { date, itemId, itemName, unitCost, marginPercent, minSellingPrice, category, division } = req.body;
+  try {
+    const result = await prisma.inventoryUnitCost.update({
+      where: { id },
+      data: {
+        date: parseDate(date),
+        itemId,
+        itemName,
+        unitCost: parseFloat(unitCost) || 0,
+        marginPercent: marginPercent !== undefined ? parseFloat(marginPercent) : null,
+        minSellingPrice: parseFloat(minSellingPrice) || 0,
+        category,
+        division
+      }
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.delete('/api/inventory-unit-costs/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.inventoryUnitCost.delete({
+      where: { id }
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/inventory-unit-costs/bulk', async (req, res) => {
+  const records = req.body;
+  if (!Array.isArray(records)) {
+    return res.status(400).json({ error: 'Payload must be an array of records' });
+  }
+  try {
+    const items = await prisma.item.findMany();
+    const itemMap = new Map(items.map(item => [item.itemCode.toLowerCase(), item]));
+    const creations = [];
+    for (const record of records) {
+      const { date, itemCode, unitCost, marginPercent, minSellingPrice, division } = record;
+      const item = itemMap.get((itemCode || '').toString().trim().toLowerCase());
+      if (!item) continue;
+      creations.push({
+        date: parseDate(date) || new Date(),
+        itemId: item.id,
+        itemName: `${item.itemCode} - ${item.itemName}`,
+        unitCost: parseFloat(unitCost) || 0,
+        marginPercent: marginPercent !== undefined && marginPercent !== null ? parseFloat(marginPercent) : null,
+        minSellingPrice: parseFloat(minSellingPrice) || 0,
+        category: item.category || '',
+        division: (division || 'WAREHOUSE').toString().toUpperCase().trim()
+      });
+    }
+    if (creations.length > 0) {
+      const result = await prisma.inventoryUnitCost.createMany({
+        data: creations
+      });
+      res.json({ success: true, count: result.count });
+    } else {
+      res.json({ success: true, count: 0 });
+    }
+  } catch (err) {
+    console.error('Error in bulk import:', err);
     res.status(500).json({ error: (err as Error).message });
   }
 });
@@ -906,30 +1216,45 @@ app.get('/api/delivery-notes/:id', async (req, res) => {
 app.post('/api/delivery-notes', async (req, res) => {
   const { customerId, reference, items, description, inventoryLocation, deliveryDate, orderNumber, invoiceNumber, status, docOptions, customTitle, footer, columnLineNumber, deliveryAddress } = req.body;
   try {
-    const result = await prisma.deliveryNote.create({
-      data: {
-        customerId,
-        reference,
-        description,
-        deliveryAddress,
-        inventoryLocation,
-        deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
-        orderNumber,
-        invoiceNumber,
-        status: status || 'Pending',
-        docOptions: docOptions || {},
-        customTitle,
-        footer,
-        columnLineNumber,
-        items: {
-          create: items.map((item: any) => ({
-            itemId: item.itemId,
-            description: item.description,
-            qty: Number(item.qty)
-          }))
+    const result = await prisma.$transaction(async (tx) => {
+      const dn = await tx.deliveryNote.create({
+        data: {
+          customerId,
+          reference,
+          description,
+          deliveryAddress,
+          inventoryLocation,
+          deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
+          orderNumber,
+          invoiceNumber,
+          status: status || 'Pending',
+          docOptions: docOptions || {},
+          customTitle,
+          footer,
+          columnLineNumber,
+          items: {
+            create: items.map((item: any) => ({
+              itemId: item.itemId,
+              description: item.description,
+              qty: Number(item.qty)
+            }))
+          }
+        },
+        include: { items: true }
+      });
+
+      // Deduct stock if marked as Delivered
+      if (dn.status === 'Delivered') {
+        for (const item of dn.items) {
+          if (item.itemId) {
+            await adjustItemInventory(item.itemId, -Number(item.qty), 'Delivery Note', dn.id, inventoryLocation, tx);
+          }
         }
       }
+
+      return dn;
     });
+
     res.json(result);
   } catch (err) {
     console.error('CREATE DELIVERY NOTE ERROR:', err);
@@ -942,56 +1267,93 @@ app.put('/api/delivery-notes/:id', async (req, res) => {
   const { id } = req.params;
   const { customerId, reference, items, description, inventoryLocation, deliveryDate, orderNumber, invoiceNumber, status, docOptions, customTitle, footer, columnLineNumber, deliveryAddress } = req.body;
   try {
-    // Resolve UUID if 'id' is a reference
-    let targetId = id;
-    const existing = await prisma.deliveryNote.findFirst({
-      where: {
-        OR: [
-          { id: id.length === 36 ? id : undefined }, // Try as UUID
-          { reference: id }
-        ]
+    const result = await prisma.$transaction(async (tx) => {
+      // Resolve UUID if 'id' is a reference
+      const existing = await tx.deliveryNote.findFirst({
+        where: {
+          OR: [
+            { id: id.length === 36 ? id : undefined },
+            { reference: id }
+          ]
+        },
+        include: { items: true }
+      });
+
+      if (!existing) {
+        throw new Error('Delivery note not found');
       }
+
+      const targetId = existing.id;
+
+      // 1. Revert old stock deduction if status was 'Delivered'
+      if (existing.status === 'Delivered') {
+        for (const item of existing.items) {
+          if (item.itemId) {
+            await tx.item.update({
+              where: { id: item.itemId },
+              data: { qtyOnHand: { increment: Number(item.qty) } }
+            });
+          }
+        }
+        await tx.stockLedger.deleteMany({ where: { sourceDocumentId: targetId } });
+      }
+
+      // Delete existing items ONLY if new items are provided
+      if (items) {
+        await tx.deliveryNoteItem.deleteMany({ where: { deliveryNoteId: targetId } });
+      }
+
+      // 2. Perform update
+      const updatedDn = await tx.deliveryNote.update({
+        where: { id: targetId },
+        data: {
+          customerId: customerId || existing.customerId,
+          reference: reference || existing.reference,
+          description: description !== undefined ? description : existing.description,
+          deliveryAddress: deliveryAddress !== undefined ? deliveryAddress : existing.deliveryAddress,
+          inventoryLocation: inventoryLocation !== undefined ? inventoryLocation : existing.inventoryLocation,
+          deliveryDate: deliveryDate ? new Date(deliveryDate) : existing.deliveryDate,
+          orderNumber: orderNumber !== undefined ? orderNumber : existing.orderNumber,
+          invoiceNumber: invoiceNumber !== undefined ? invoiceNumber : existing.invoiceNumber,
+          status: status || existing.status,
+          docOptions: docOptions || existing.docOptions || {},
+          customTitle: customTitle !== undefined ? customTitle : existing.customTitle,
+          footer: footer !== undefined ? footer : existing.footer,
+          columnLineNumber: columnLineNumber !== undefined ? columnLineNumber : existing.columnLineNumber,
+          items: items ? {
+            create: items.map((item: any) => ({
+              itemId: item.itemId,
+              description: item.description,
+              qty: Number(item.qty)
+            }))
+          } : undefined
+        },
+        include: { items: true }
+      });
+
+      // 3. Apply new stock deduction if status is 'Delivered'
+      if (updatedDn.status === 'Delivered') {
+        for (const item of updatedDn.items) {
+          if (item.itemId) {
+            await adjustItemInventory(
+              item.itemId,
+              -Number(item.qty),
+              'Delivery Note',
+              updatedDn.id,
+              updatedDn.inventoryLocation || inventoryLocation,
+              tx
+            );
+          }
+        }
+      }
+
+      return updatedDn;
     });
 
-    if (!existing) {
-      return res.status(404).json({ error: 'Delivery note not found' });
-    }
-    targetId = existing.id;
-
-    // Delete existing items ONLY if new items are provided
-    if (items) {
-      await prisma.deliveryNoteItem.deleteMany({ where: { deliveryNoteId: targetId } });
-    }
-
-    const result = await prisma.deliveryNote.update({
-      where: { id: targetId },
-      data: {
-        customerId: customerId || existing.customerId,
-        reference: reference || existing.reference,
-        description: description !== undefined ? description : existing.description,
-        deliveryAddress: deliveryAddress !== undefined ? deliveryAddress : existing.deliveryAddress,
-        inventoryLocation: inventoryLocation !== undefined ? inventoryLocation : existing.inventoryLocation,
-        deliveryDate: deliveryDate ? new Date(deliveryDate) : existing.deliveryDate,
-        orderNumber: orderNumber !== undefined ? orderNumber : existing.orderNumber,
-        invoiceNumber: invoiceNumber !== undefined ? invoiceNumber : existing.invoiceNumber,
-        status: status || existing.status,
-        docOptions: docOptions || existing.docOptions || {},
-        customTitle: customTitle !== undefined ? customTitle : existing.customTitle,
-        footer: footer !== undefined ? footer : existing.footer,
-        columnLineNumber: columnLineNumber !== undefined ? columnLineNumber : existing.columnLineNumber,
-        items: items ? {
-          create: items.map((item: any) => ({
-            itemId: item.itemId,
-            description: item.description,
-            qty: Number(item.qty)
-          }))
-        } : undefined
-      }
-    });
     res.json(result);
-  } catch (err) {
+  } catch (err: any) {
     console.error('UPDATE DELIVERY NOTE ERROR:', err);
-    res.status(500).json({ error: (err as Error).message });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -1246,6 +1608,53 @@ app.get('/api/locations', async (req, res) => {
   }
 });
 
+app.post('/api/locations', async (req, res) => {
+  const { name, code } = req.body;
+  try {
+    const result = await prisma.location.create({
+      data: {
+        name,
+        code: code || undefined
+      }
+    });
+    res.json(result);
+  } catch (err: any) {
+    console.error('CREATE LOCATION ERROR:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/locations/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, code } = req.body;
+  try {
+    const result = await prisma.location.update({
+      where: { id },
+      data: {
+        name,
+        code: code !== undefined ? code : undefined
+      }
+    });
+    res.json(result);
+  } catch (err: any) {
+    console.error('UPDATE LOCATION ERROR:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/locations/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.location.delete({
+      where: { id }
+    });
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('DELETE LOCATION ERROR:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/inventory-transfers', async (req, res) => {
   try {
     const transfers = await prisma.inventoryTransfer.findMany({
@@ -1265,34 +1674,225 @@ app.get('/api/inventory-transfers/:id', async (req, res) => {
       include: { items: true }
     });
     if (!transfer) return res.status(404).json({ error: 'Transfer not found' });
-    res.json(transfer);
+
+    // Find internal delivery note id if exists
+    const dn = await prisma.deliveryNote.findFirst({
+      where: { reference: `INTDN-${transfer.reference}` }
+    });
+
+    // Find internal GRN id if exists
+    const grn = await prisma.goodsReceivedNote.findFirst({
+      where: { reference: `INTGRN-${transfer.reference}` }
+    });
+
+    res.json({
+      ...transfer,
+      deliveryNoteId: dn ? dn.id : null,
+      goodsReceivedNoteId: grn ? grn.id : null
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/inventory-transfers', async (req, res) => {
-  const { reference, date, fromLocation, toLocation, description, status, items } = req.body;
-  try {
-    const result = await prisma.inventoryTransfer.create({
+const adjustTransferInventoryAndDocuments = async (
+  transferId: string,
+  oldStatus: string,
+  newStatus: string,
+  tx: any
+) => {
+  console.log(`[TRANSFER ADJUST] ID=${transferId}, OldStatus=${oldStatus}, NewStatus=${newStatus}`);
+  
+  const transfer = await tx.inventoryTransfer.findUnique({
+    where: { id: transferId },
+    include: { items: true }
+  });
+  if (!transfer) return;
+
+  const isNewDispatched = ['Ready to Dispatch', 'Sent', 'Received'].includes(newStatus || '');
+  const isNewReceived = (newStatus === 'Received');
+
+  // 1. Always delete old Transfer Out stock ledger entries for this transfer (so they can be rebuilt)
+  await tx.stockLedger.deleteMany({
+    where: {
+      sourceDocumentId: transferId,
+      transactionType: 'Transfer Out'
+    }
+  });
+
+  // 2. Always delete old internal Delivery Note if it exists
+  const dnRef = `INTDN-${transfer.reference}`;
+  const existingDn = await tx.deliveryNote.findFirst({ where: { reference: dnRef } });
+  if (existingDn) {
+    await tx.deliveryNoteItem.deleteMany({ where: { deliveryNoteId: existingDn.id } });
+    await tx.deliveryNote.delete({ where: { id: existingDn.id } });
+    console.log(`[TRANSFER ADJUST] Deleted old internal Delivery Note ${dnRef}`);
+  }
+
+  // 3. Always delete old internal GRN and its stock ledger entries if it exists
+  const grnRef = `INTGRN-${transfer.reference}`;
+  const existingGrn = await tx.goodsReceivedNote.findFirst({ where: { reference: grnRef } });
+  if (existingGrn) {
+    await tx.stockLedger.deleteMany({ where: { sourceDocumentId: existingGrn.id } });
+    await tx.goodsReceivedNoteItem.deleteMany({ where: { goodsReceivedNoteId: existingGrn.id } });
+    await tx.goodsReceivedNote.delete({ where: { id: existingGrn.id } });
+    console.log(`[TRANSFER ADJUST] Deleted old internal GRN ${grnRef}`);
+  }
+
+  // 4. Resolve the current items to prepare for recreation
+  const resolvedItems = [];
+  for (const item of transfer.items) {
+    const resolvedItem = await tx.item.findFirst({
+      where: {
+        OR: [
+          { id: item.inventoryItem.length === 36 ? item.inventoryItem : undefined },
+          { itemCode: item.inventoryItem },
+          { itemName: item.inventoryItem },
+          { itemCode: item.inventoryItem.split(' - ')[0] }
+        ]
+      }
+    });
+    if (resolvedItem) {
+      resolvedItems.push({
+        id: resolvedItem.id,
+        itemCode: resolvedItem.itemCode,
+        itemName: resolvedItem.itemName,
+        qty: Number(item.qty),
+        description: item.inventoryItem
+      });
+    }
+  }
+
+  // Find a default customer and supplier to satisfy DB constraints
+  const firstCustomer = await tx.customer.findFirst();
+  const firstSupplier = await tx.suppliers.findFirst();
+
+  // 5. Create new Delivery Note and record Transfer Out if currently dispatched
+  if (isNewDispatched) {
+    if (!firstCustomer) {
+      throw new Error('No customer found in the database. Cannot create internal Delivery Note.');
+    }
+
+    // Create Internal Delivery Note
+    await tx.deliveryNote.create({
       data: {
-        reference,
-        date: parseDate(date),
-        fromLocation,
-        toLocation,
-        description,
-        status: status || 'Draft',
+        customerId: firstCustomer.id,
+        reference: dnRef,
+        description: `Internal Delivery Note for Transfer ${transfer.reference}`,
+        inventoryLocation: transfer.fromLocation,
+        status: 'Pending', // Keeps it from triggering its own stock ledger entries
         items: {
-          create: items.map((item: any) => ({
-            inventoryItem: item.inventoryItem,
-            qty: Number(item.qty)
+          create: resolvedItems.map(ri => ({
+            itemId: ri.id,
+            qty: ri.qty,
+            description: ri.description
           }))
         }
       }
     });
+    console.log(`[TRANSFER ADJUST] Created new internal Delivery Note ${dnRef}`);
+
+    // Decrement stock from source location
+    for (const ri of resolvedItems) {
+      await adjustItemInventory(ri.id, -ri.qty, 'Transfer Out', transferId, transfer.fromLocation, tx);
+    }
+  }
+
+  // 6. Create new GRN (which automatically adjusts stock) if currently received
+  if (isNewReceived) {
+    if (!firstSupplier) {
+      throw new Error('No supplier found in the database. Cannot create internal GRN.');
+    }
+
+    const createdGrn = await tx.goodsReceivedNote.create({
+      data: {
+        supplierId: firstSupplier.id,
+        reference: grnRef,
+        description: `Internal GRN for Transfer ${transfer.reference}`,
+        inventoryLocation: transfer.toLocation,
+        status: 'Received',
+        items: {
+          create: resolvedItems.map(ri => ({
+            itemId: ri.id,
+            qty: ri.qty,
+            description: ri.description
+          }))
+        }
+      },
+      include: { items: true }
+    });
+    console.log(`[TRANSFER ADJUST] Created new internal GRN ${grnRef}`);
+
+    // Apply stock increment at the destination location via the GRN
+    for (const item of createdGrn.items) {
+      if (item.itemId) {
+        await adjustItemInventory(item.itemId, Number(item.qty), 'GRN', createdGrn.id, transfer.toLocation, tx);
+      }
+    }
+  }
+};
+
+app.post('/api/inventory-transfers', async (req, res) => {
+  const { reference, date, fromLocation, toLocation, description, status, items } = req.body;
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const transfer = await tx.inventoryTransfer.create({
+        data: {
+          reference,
+          date: parseDate(date),
+          fromLocation,
+          toLocation,
+          description,
+          status: status || 'Draft',
+          items: {
+            create: items.map((item: any) => ({
+              inventoryItem: item.inventoryItem,
+              qty: Number(item.qty)
+            }))
+          }
+        },
+        include: { items: true }
+      });
+
+      await adjustTransferInventoryAndDocuments(transfer.id, 'Draft', status || 'Draft', tx);
+
+      return transfer;
+    });
+
     res.json(result);
   } catch (err: any) {
     console.error('CREATE TRANSFER ERROR:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/inventory-transfers/:id', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  try {
+    const existing = await prisma.inventoryTransfer.findUnique({
+      where: { id }
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Transfer not found' });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedTransfer = await tx.inventoryTransfer.update({
+        where: { id },
+        data: { status: status || 'Draft' },
+        include: { items: true }
+      });
+
+      await adjustTransferInventoryAndDocuments(id, existing.status || 'Draft', status || 'Draft', tx);
+
+      return updatedTransfer;
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    console.error('PATCH TRANSFER ERROR:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1301,26 +1901,45 @@ app.put('/api/inventory-transfers/:id', async (req, res) => {
   const { id } = req.params;
   const { reference, date, fromLocation, toLocation, description, status, items } = req.body;
   try {
-    await prisma.inventoryTransferItem.deleteMany({ where: { inventoryTransferId: id } });
-    const result = await prisma.inventoryTransfer.update({
-      where: { id },
-      data: {
-        reference,
-        date: parseDate(date),
-        fromLocation,
-        toLocation,
-        description,
-        status: status || 'Draft',
-        items: {
-          create: items.map((item: any) => ({
-            inventoryItem: item.inventoryItem,
-            qty: Number(item.qty)
-          }))
-        }
+    const result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.inventoryTransfer.findUnique({
+        where: { id },
+        include: { items: true }
+      });
+
+      if (!existing) {
+        throw new Error('Transfer not found');
       }
+
+      await tx.inventoryTransferItem.deleteMany({ where: { inventoryTransferId: id } });
+
+      const updatedTransfer = await tx.inventoryTransfer.update({
+        where: { id },
+        data: {
+          reference,
+          date: parseDate(date),
+          fromLocation,
+          toLocation,
+          description,
+          status: status || 'Draft',
+          items: {
+            create: items.map((item: any) => ({
+              inventoryItem: item.inventoryItem,
+              qty: Number(item.qty)
+            }))
+          }
+        },
+        include: { items: true }
+      });
+
+      await adjustTransferInventoryAndDocuments(id, existing.status || 'Draft', status || 'Draft', tx);
+
+      return updatedTransfer;
     });
+
     res.json(result);
   } catch (err: any) {
+    console.error('UPDATE TRANSFER ERROR:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1351,23 +1970,116 @@ app.get('/api/inventory-write-offs/:id', async (req, res) => {
 app.post('/api/inventory-write-offs', async (req, res) => {
   const { reference, date, inventoryItem, qty, account, allocation, taxCode, division, description, amount, status } = req.body;
   try {
-    const result = await prisma.inventoryWriteOff.create({
-      data: {
-        reference,
-        date: parseDate(date),
-        inventoryItem,
-        qty: Number(qty),
-        account,
-        allocation,
-        taxCode,
-        division,
-        description,
-        amount: amount ? Number(amount) : undefined,
-        status: status || 'Draft'
+    const result = await prisma.$transaction(async (tx) => {
+      const wo = await tx.inventoryWriteOff.create({
+        data: {
+          reference,
+          date: parseDate(date),
+          inventoryItem,
+          qty: Number(qty),
+          account,
+          allocation,
+          taxCode,
+          division,
+          description,
+          amount: amount ? Number(amount) : undefined,
+          status: status || 'Draft'
+        }
+      });
+
+      if (wo.status === 'Approved') {
+        const item = await tx.item.findFirst({
+          where: {
+            OR: [
+              { id: inventoryItem.length === 36 ? inventoryItem : undefined },
+              { itemCode: inventoryItem },
+              { itemName: inventoryItem }
+            ]
+          }
+        });
+        if (item) {
+          await adjustItemInventory(item.id, -Number(qty), 'Write-Off', wo.id, 'Main Warehouse', tx);
+        }
       }
+
+      return wo;
     });
+
     res.json(result);
   } catch (err: any) {
+    console.error('CREATE WRITE OFF ERROR:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/inventory-write-offs/:id', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  try {
+    const existing = await prisma.inventoryWriteOff.findUnique({
+      where: { id }
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Write-off not found' });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Revert old stock deduction if status was 'Approved'
+      if (existing.status === 'Approved' && status !== 'Approved') {
+        const item = await tx.item.findFirst({
+          where: {
+            OR: [
+              { id: existing.inventoryItem.length === 36 ? existing.inventoryItem : undefined },
+              { itemCode: existing.inventoryItem },
+              { itemName: existing.inventoryItem },
+              { itemCode: existing.inventoryItem.split(' - ')[0] }
+            ]
+          }
+        });
+        if (item) {
+          await tx.item.update({
+            where: { id: item.id },
+            data: { qtyOnHand: { increment: Number(existing.qty) } }
+          });
+        }
+        await tx.stockLedger.deleteMany({
+          where: {
+            sourceDocumentId: id,
+            transactionType: 'Write-Off'
+          }
+        });
+      }
+
+      // 2. Perform the update
+      const updatedWo = await tx.inventoryWriteOff.update({
+        where: { id },
+        data: { status: status || 'Draft' }
+      });
+
+      // 3. Apply new stock deduction if status is 'Approved'
+      if (status === 'Approved' && existing.status !== 'Approved') {
+        const item = await tx.item.findFirst({
+          where: {
+            OR: [
+              { id: updatedWo.inventoryItem.length === 36 ? updatedWo.inventoryItem : undefined },
+              { itemCode: updatedWo.inventoryItem },
+              { itemName: updatedWo.inventoryItem },
+              { itemCode: updatedWo.inventoryItem.split(' - ')[0] }
+            ]
+          }
+        });
+        if (item) {
+          await adjustItemInventory(item.id, -Number(updatedWo.qty), 'Write-Off', updatedWo.id, 'Main Warehouse', tx);
+        }
+      }
+
+      return updatedWo;
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    console.error('PATCH WRITE OFF ERROR:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1376,24 +2088,72 @@ app.put('/api/inventory-write-offs/:id', async (req, res) => {
   const { id } = req.params;
   const { reference, date, inventoryItem, qty, account, allocation, taxCode, division, description, amount, status } = req.body;
   try {
-    const result = await prisma.inventoryWriteOff.update({
-      where: { id },
-      data: {
-        reference,
-        date: parseDate(date),
-        inventoryItem,
-        qty: Number(qty),
-        account,
-        allocation,
-        taxCode,
-        division,
-        description,
-        amount: amount ? Number(amount) : undefined,
-        status: status || 'Draft'
+    const result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.inventoryWriteOff.findUnique({
+        where: { id }
+      });
+
+      if (!existing) {
+        throw new Error('Write-off not found');
       }
+
+      if (existing.status === 'Approved') {
+        const oldItem = await tx.item.findFirst({
+          where: {
+            OR: [
+              { id: existing.inventoryItem.length === 36 ? existing.inventoryItem : undefined },
+              { itemCode: existing.inventoryItem },
+              { itemName: existing.inventoryItem }
+            ]
+          }
+        });
+        if (oldItem) {
+          await tx.item.update({
+            where: { id: oldItem.id },
+            data: { qtyOnHand: { increment: Number(existing.qty) } }
+          });
+        }
+        await tx.stockLedger.deleteMany({ where: { sourceDocumentId: id } });
+      }
+
+      const updatedWo = await tx.inventoryWriteOff.update({
+        where: { id },
+        data: {
+          reference,
+          date: parseDate(date),
+          inventoryItem,
+          qty: Number(qty),
+          account,
+          allocation,
+          taxCode,
+          division,
+          description,
+          amount: amount ? Number(amount) : undefined,
+          status: status || 'Draft'
+        }
+      });
+
+      if (updatedWo.status === 'Approved') {
+        const newItem = await tx.item.findFirst({
+          where: {
+            OR: [
+              { id: inventoryItem.length === 36 ? inventoryItem : undefined },
+              { itemCode: inventoryItem },
+              { itemName: inventoryItem }
+            ]
+          }
+        });
+        if (newItem) {
+          await adjustItemInventory(newItem.id, -Number(qty), 'Write-Off', updatedWo.id, 'Main Warehouse', tx);
+        }
+      }
+
+      return updatedWo;
     });
+
     res.json(result);
   } catch (err: any) {
+    console.error('UPDATE WRITE OFF ERROR:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2105,24 +2865,36 @@ app.get('/api/goods-received-notes/:id', async (req, res) => {
 app.post('/api/goods-received-notes', async (req, res) => {
   const { supplierId, reference, items, description, inventoryLocation, receivedDate, purchaseOrderId, status } = req.body;
   try {
-    const result = await prisma.goodsReceivedNote.create({
-      data: {
-        supplierId,
-        reference,
-        description,
-        inventoryLocation,
-        receivedDate: receivedDate ? parseDate(receivedDate) : undefined,
-        purchaseOrderId,
-        status: status || 'Received',
-        items: {
-          create: (items || []).map((item: any) => ({
-            itemId: item.itemId,
-            description: item.description,
-            qty: Number(item.qty)
-          }))
+    const result = await prisma.$transaction(async (tx) => {
+      const grn = await tx.goodsReceivedNote.create({
+        data: {
+          supplierId,
+          reference,
+          description,
+          inventoryLocation,
+          receivedDate: receivedDate ? parseDate(receivedDate) : undefined,
+          purchaseOrderId,
+          status: status || 'Received',
+          items: {
+            create: (items || []).map((item: any) => ({
+              itemId: item.itemId,
+              description: item.description,
+              qty: Number(item.qty)
+            }))
+          }
+        },
+        include: { items: true }
+      });
+
+      for (const item of grn.items) {
+        if (item.itemId) {
+          await adjustItemInventory(item.itemId, Number(item.qty), 'GRN', grn.id, inventoryLocation, tx);
         }
       }
+
+      return grn;
     });
+
     res.json(result);
   } catch (err: any) {
     console.error('CREATE GRN ERROR:', err);
@@ -2135,41 +2907,74 @@ app.put('/api/goods-received-notes/:id', async (req, res) => {
   console.log(`>>> [GRN PUT] UPDATING ID: ${id}`);
   const { supplierId, reference, items, description, inventoryLocation, receivedDate, purchaseOrderId, status } = req.body;
   try {
-    try {
-      const result = await prisma.goodsReceivedNote.update({
+    const result = await prisma.$transaction(async (tx) => {
+      let grn = await tx.goodsReceivedNote.findUnique({
         where: { id },
-        data: {
-          supplierId,
-          reference,
-          description,
-          inventoryLocation,
-          receivedDate: receivedDate ? parseDate(receivedDate) : undefined,
-          purchaseOrderId,
-          status: status || 'Received',
-          items: {
-            deleteMany: {},
-            create: (items || []).map((item: any) => ({
-              itemId: item.itemId,
-              description: item.description,
-              qty: Number(item.qty)
-            }))
+        include: { items: true }
+      });
+
+      if (grn) {
+        for (const item of grn.items) {
+          if (item.itemId) {
+            await tx.item.update({
+              where: { id: item.itemId },
+              data: { qtyOnHand: { decrement: Number(item.qty) } }
+            });
           }
         }
-      });
-      return res.json(result);
-    } catch (err: any) {
-      if (err.code === 'P2025') {
-        const inv = await prisma.invoices.findUnique({
+        await tx.stockLedger.deleteMany({ where: { sourceDocumentId: id } });
+
+        const updatedGrn = await tx.goodsReceivedNote.update({
+          where: { id },
+          data: {
+            supplierId,
+            reference,
+            description,
+            inventoryLocation,
+            receivedDate: receivedDate ? parseDate(receivedDate) : undefined,
+            purchaseOrderId,
+            status: status || 'Received',
+            items: {
+              deleteMany: {},
+              create: (items || []).map((item: any) => ({
+                itemId: item.itemId,
+                description: item.description,
+                qty: Number(item.qty)
+              }))
+            }
+          },
+          include: { items: true }
+        });
+
+        for (const item of updatedGrn.items) {
+          if (item.itemId) {
+            await adjustItemInventory(item.itemId, Number(item.qty), 'GRN', updatedGrn.id, inventoryLocation, tx);
+          }
+        }
+
+        return updatedGrn;
+      } else {
+        const inv = await tx.invoices.findUnique({
           where: { id },
           include: { items: true }
         });
         if (inv && (inv.docOptions as any)?.actAsGoodReceipt === true) {
+          for (const item of inv.items) {
+            if (item.itemId) {
+              await tx.item.update({
+                where: { id: item.itemId },
+                data: { qtyOnHand: { decrement: Number(item.qty) } }
+              });
+            }
+          }
+          await tx.stockLedger.deleteMany({ where: { sourceDocumentId: id } });
+
           const existingOptions = (inv.docOptions as any) || {};
           const updatedOptions = {
             ...existingOptions,
             inventoryLocation: inventoryLocation || 'Main Warehouse'
           };
-          const result = await prisma.invoices.update({
+          const updatedInv = await tx.invoices.update({
             where: { id },
             data: {
               supplier_id: supplierId,
@@ -2186,13 +2991,23 @@ app.put('/api/goods-received-notes/:id', async (req, res) => {
                   totalAmount: item.totalAmount || 0
                 }))
               }
-            }
+            },
+            include: { items: true }
           });
-          return res.json(result);
+
+          for (const item of updatedInv.items) {
+            if (item.itemId) {
+              await adjustItemInventory(item.itemId, Number(item.qty), 'GRN', updatedInv.id, inventoryLocation, tx);
+            }
+          }
+
+          return updatedInv;
         }
       }
-      throw err;
-    }
+      throw new Error('GRN or associated invoice not found');
+    });
+
+    res.json(result);
   } catch (err: any) {
     console.error('[GRN UPDATE ERROR]:', err);
     res.status(500).json({ error: err.message });

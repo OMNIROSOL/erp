@@ -646,10 +646,10 @@ const BatchPrintView = () => {
                                                 <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-left">Item</th>
                                                 <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-left">Description</th>
                                                 <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Qty</th>
-                                                {!isDeliveryNote && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Unit Price</th>}
-                                                {!isDeliveryNote && item.options?.columnDiscount && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Disc</th>}
-                                                {!isDeliveryNote && (isPurchaseOrder || isPurchaseQuote) && !item.options?.amountsAreTaxInclusive && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Tax Amount</th>}
-                                                {!isDeliveryNote && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Total</th>}
+                                                {!isDeliveryNote && !isPurchaseQuote && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Unit Price</th>}
+                                                {!isDeliveryNote && !isPurchaseQuote && item.options?.columnDiscount && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Disc</th>}
+                                                {!isDeliveryNote && !isPurchaseQuote && (isPurchaseOrder || isPurchaseQuote) && !item.options?.amountsAreTaxInclusive && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Tax Amount</th>}
+                                                {!isDeliveryNote && !isPurchaseQuote && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Total</th>}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
@@ -674,20 +674,20 @@ const BatchPrintView = () => {
                                                             <p className="text-gray-500">{line.description || '-'}</p>
                                                         </td>
                                                         <td className="px-4 py-4 text-right font-medium">{Number(line.qty).toLocaleString()} <span className="text-[10px] text-slate-400 font-bold ml-1 uppercase">{line.unit || ''}</span></td>
-                                                        {!isDeliveryNote && <td className="px-4 py-4 text-right font-medium">{price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>}
-                                                        {!isDeliveryNote && item.options?.columnDiscount && (
+                                                        {!isDeliveryNote && !isPurchaseQuote && <td className="px-4 py-4 text-right font-medium">{price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>}
+                                                        {!isDeliveryNote && !isPurchaseQuote && item.options?.columnDiscount && (
                                                             <td className="px-4 py-4 text-right">
                                                                 <span className="text-xs font-bold text-rose-500">
                                                                     {line.discount ? (item.options.columnDiscountType === 'Percentage' ? `${line.discount}%` : parseFloat(line.discount).toLocaleString()) : '-'}
                                                                 </span>
                                                             </td>
                                                         )}
-                                                        {!isDeliveryNote && (isPurchaseOrder || isPurchaseQuote) && !item.options?.amountsAreTaxInclusive && (
+                                                        {!isDeliveryNote && !isPurchaseQuote && (isPurchaseOrder || isPurchaseQuote) && !item.options?.amountsAreTaxInclusive && (
                                                             <td className="px-4 py-4 text-right font-medium text-slate-400">
                                                                 {(lineTotal * (line.taxCode === 'VAT 16%' ? 0.16 : 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                             </td>
                                                         )}
-                                                        {!isDeliveryNote && <td className="px-4 py-4 text-right font-semibold">{(lineTotal * (line.taxCode === 'VAT 16%' ? (item.options?.amountsAreTaxInclusive ? 1 : 1.16) : 1)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>}
+                                                        {!isDeliveryNote && !isPurchaseQuote && <td className="px-4 py-4 text-right font-semibold">{(lineTotal * (line.taxCode === 'VAT 16%' ? (item.options?.amountsAreTaxInclusive ? 1 : 1.16) : 1)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>}
                                                     </tr>
                                                 );
                                             }) : (
@@ -696,9 +696,9 @@ const BatchPrintView = () => {
                                                     <td className="px-4 py-5 font-semibold text-slate-900">General Item</td>
                                                     <td className="px-4 py-5 font-medium text-slate-500">{item.description || '-'}</td>
                                                     <td className="px-4 py-5 text-right font-medium">1</td>
-                                                    <td className="px-4 py-5 text-right font-medium">{parseFloat(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                                    {item.options?.columnDiscount && <td className="px-4 py-5 text-right font-bold text-rose-500">-</td>}
-                                                    <td className="px-4 py-5 text-right font-semibold">{parseFloat(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                    {!isPurchaseQuote && <td className="px-4 py-5 text-right font-medium">{parseFloat(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>}
+                                                    {!isPurchaseQuote && item.options?.columnDiscount && <td className="px-4 py-5 text-right font-bold text-rose-500">-</td>}
+                                                    {!isPurchaseQuote && <td className="px-4 py-5 text-right font-semibold">{parseFloat(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>}
                                                 </tr>
                                             )}
                                         </tbody>
@@ -804,6 +804,10 @@ const BatchPrintView = () => {
                                                         </div>
                                                     </>
                                                 );
+                                            }
+
+                                            if (isPurchaseQuote) {
+                                                return null;
                                             }
 
                                             return (

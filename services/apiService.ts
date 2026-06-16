@@ -58,6 +58,7 @@ export const apiService = {
 
   // Sales
   getQuotes: () => api.get('/quotes').then(res => res.data),
+  getQuote: (id: string) => api.get(`/quotes/${id}`).then(res => res.data),
   createQuote: (data: any) => api.post('/quotes', data).then(res => res.data),
   updateQuote: (id: string, data: any) => api.put(`/quotes/${id}`, data).then(res => res.data),
   updateQuoteStatus: (id: string, status: string) => api.patch(`/quotes/${id}`, { status }).then(res => res.data),
@@ -221,6 +222,14 @@ export const apiService = {
       console.error('Failed to save sim user to localStorage:', err);
     }
   },
+  // Procurement
+  getPlanningData: () => api.get('/procurement/planning').then(res => res.data),
+  updateSupplierLeadTime: (id: string, data: any) => api.put(`/procurement/suppliers/${id}/lead-time`, data).then(res => res.data),
+  saveOrderCostsAndPayments: (id: string, data: any) => api.post(`/procurement/purchase-orders/${id}/costs-and-payments`, data).then(res => res.data),
+  getProcurementCostingReport: () => api.get('/procurement/costing-report').then(res => res.data),
+  getHistoricalPrices: (itemId: string) => api.get(`/procurement/historical-prices/${itemId}`).then(res => res.data),
+  getProcurementShipments: () => api.get('/procurement/shipments').then(res => res.data),
+  uploadItemAttachment: (itemId: string, data: any) => api.post('/procurement/attachments', { itemId, ...data }).then(res => res.data),
 };
 
 export default apiService;

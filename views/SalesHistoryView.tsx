@@ -107,7 +107,7 @@ const SalesHistoryView = () => {
                 type: 'Invoice',
                 reference: inv.reference || '—',
                 status: inv.status || 'Active',
-                currency: inv.currency || 'ZMW',
+                currency: inv.currency || inv.customer?.currency?.split(' - ')[0] || 'ZMW',
                 timestamp: formatTimestamp(inv.createdAt)
             });
         });
@@ -121,7 +121,7 @@ const SalesHistoryView = () => {
                 type: 'Delivery',
                 reference: dn.reference || '—',
                 status: dn.status || 'Issued',
-                currency: dn.currency || 'ZMW',
+                currency: dn.currency || dn.customer?.currency?.split(' - ')[0] || 'ZMW',
                 timestamp: formatTimestamp(dn.timestamp)
             });
         });

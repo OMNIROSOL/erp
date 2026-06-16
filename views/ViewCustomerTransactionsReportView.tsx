@@ -64,7 +64,7 @@ const ViewCustomerTransactionsReportView: React.FC = () => {
                         description: inv.description || '',
                         debit: parseFloat(inv.grandTotal) || 0,
                         credit: 0,
-                        currency: inv.currency || 'ZMW'
+                        currency: inv.currency || inv.customer?.currency?.split(' - ')[0] || 'ZMW'
                     });
                 });
 

@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import cors from 'cors';
+import procurementRouter from './procurement';
 
 const app = express();
 console.log('Connecting to DB:', process.env.DATABASE_URL ? 'URL found' : 'URL MISSING');
@@ -25,7 +26,7 @@ pool.on('error', (err) => {
 });
 
 const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+export const prisma = new PrismaClient({ adapter });
 const PORT = process.env.PORT || 3001;
 
 const formatDate = (date: Date | null | undefined) => {
@@ -122,6 +123,7 @@ const adjustItemInventory = async (
 
 app.use(cors());
 app.use(express.json());
+app.use('/api/procurement', procurementRouter);
 
 // Add a simple request tracker
 let requestId = 0;
@@ -413,7 +415,32 @@ app.put('/api/customers/:id', async (req, res) => {
 app.get('/api/items', async (req, res) => {
   try {
     const items = await prisma.item.findMany();
-    res.json(items);
+    const unitCosts = await prisma.inventoryUnitCost.findMany({
+      orderBy: [
+        { date: 'desc' },
+        { createdAt: 'desc' }
+      ]
+    });
+    
+    // Build a map of itemId -> latest unitCost
+    const latestCostMap = new Map<string, number>();
+    for (const cost of unitCosts) {
+      if (!latestCostMap.has(cost.itemId)) {
+        latestCostMap.set(cost.itemId, Number(cost.unitCost) || 0);
+      }
+    }
+    
+    const itemsWithAvgCost = items.map(item => {
+      const avgCost = latestCostMap.get(item.id) ?? (Number(item.purchasePrice) || 0);
+      const qtyOnHandVal = Number(item.qtyOnHand) || 0;
+      return {
+        ...item,
+        avgCost,
+        totalValue: qtyOnHandVal * avgCost
+      };
+    });
+    
+    res.json(itemsWithAvgCost);
   } catch (err: any) {
     console.error('Error fetching items:', err);
     res.status(500).json({ error: err.message });
@@ -427,7 +454,23 @@ app.get('/api/items/:id', async (req, res) => {
       where: { id }
     });
     if (!item) return res.status(404).json({ error: 'Item not found' });
-    res.json(item);
+    
+    const latestCost = await prisma.inventoryUnitCost.findFirst({
+      where: { itemId: item.id },
+      orderBy: [
+        { date: 'desc' },
+        { createdAt: 'desc' }
+      ]
+    });
+    
+    const avgCost = latestCost ? (Number(latestCost.unitCost) || 0) : (Number(item.purchasePrice) || 0);
+    const qtyOnHandVal = Number(item.qtyOnHand) || 0;
+    
+    res.json({
+      ...item,
+      avgCost,
+      totalValue: qtyOnHandVal * avgCost
+    });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -453,7 +496,23 @@ app.put('/api/items/:id', async (req, res) => {
       where: { id },
       data: { itemCode, itemName, unitName, sellingPrice, purchasePrice, qtyOnHand, description, imageUrl, category }
     });
-    res.json(result);
+    
+    const latestCost = await prisma.inventoryUnitCost.findFirst({
+      where: { itemId: result.id },
+      orderBy: [
+        { date: 'desc' },
+        { createdAt: 'desc' }
+      ]
+    });
+    
+    const avgCost = latestCost ? (Number(latestCost.unitCost) || 0) : (Number(result.purchasePrice) || 0);
+    const qtyOnHandVal = Number(result.qtyOnHand) || 0;
+    
+    res.json({
+      ...result,
+      avgCost,
+      totalValue: qtyOnHandVal * avgCost
+    });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -757,7 +816,7 @@ app.get('/api/invoices/:id', async (req, res) => {
 });
 
 app.post('/api/invoices', async (req, res) => {
-  const { customerId, reference, items, grandTotal, balanceDue, docOptions, dueDate, issueDate, description } = req.body;
+  const { customerId, reference, items, grandTotal, balanceDue, docOptions, dueDate, issueDate, description, currency } = req.body;
   try {
     const result = await prisma.invoice.create({
       data: {
@@ -765,6 +824,7 @@ app.post('/api/invoices', async (req, res) => {
         reference,
         grandTotal,
         balanceDue,
+        currency,
         issueDate: parseDate(issueDate),
         dueDate: parseDate(dueDate),
         docOptions: { ...(docOptions || {}), description },
@@ -790,7 +850,7 @@ app.post('/api/invoices', async (req, res) => {
 
 app.put('/api/invoices/:id', async (req, res) => {
   const { id } = req.params;
-  const { customerId, reference, items, grandTotal, balanceDue, docOptions, dueDate, issueDate, description } = req.body;
+  const { customerId, reference, items, grandTotal, balanceDue, docOptions, dueDate, issueDate, description, currency } = req.body;
   try {
     await prisma.invoiceItem.deleteMany({ where: { invoiceId: id } });
     const result = await prisma.invoice.update({
@@ -800,6 +860,7 @@ app.put('/api/invoices/:id', async (req, res) => {
         reference,
         grandTotal,
         balanceDue,
+        currency,
         issueDate: parseDate(issueDate),
         dueDate: parseDate(dueDate),
         docOptions: { ...(docOptions || {}), description },

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useParams, Link, useLocation } from 'react-router-dom';
-import { Invoice, Division, Footer } from '../types';
+import { Invoice, Division, FooterTemplate, InventoryUnitCost } from '../types';
 import apiService from '../services/apiService';
 import Card from '../components/shared/Card';
 import Button from '../components/shared/Button';
@@ -150,25 +150,28 @@ const NewSalesInvoiceView = () => {
     const [copyFromId, setCopyFromId] = useState<string | null>(null);
 
     const [availableDivisions, setAvailableDivisions] = useState<Division[]>([]);
-    const [dbFooters, setDbFooters] = useState<Footer[]>([]);
+    const [dbFooters, setDbFooters] = useState<FooterTemplate[]>([]);
     const [taxCodes, setTaxCodes] = useState<any[]>([]);
+    const [unitCosts, setUnitCosts] = useState<InventoryUnitCost[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         const loadMasterData = async () => {
             try {
-                const [custs, itemsData, divs, footersData, taxCodesData] = await Promise.all([
+                const [custs, itemsData, divs, footersData, taxCodesData, unitCostsData] = await Promise.all([
                     apiService.getCustomers().catch(e => { console.error('Customers failed:', e); return []; }),
                     apiService.getItems().catch(e => { console.error('Items failed:', e); return []; }),
                     apiService.getDivisions().catch(e => { console.error('Divisions failed:', e); return []; }),
                     apiService.getFooters().catch(e => { console.error('Footers failed:', e); return []; }),
-                    apiService.getTaxCodes().catch(e => { console.error('Tax codes failed:', e); return []; })
+                    apiService.getTaxCodes().catch(e => { console.error('Tax codes failed:', e); return []; }),
+                    apiService.getInventoryUnitCosts().catch(e => { console.error('Unit costs failed:', e); return []; })
                 ]);
                 setCustomers(custs);
                 setInventoryItems(itemsData);
                 setAvailableDivisions(divs);
                 setDbFooters(footersData);
                 setTaxCodes(taxCodesData);
+                setUnitCosts(unitCostsData);
             } catch (err) {
                 console.error('Failed to load master data:', err);
             }
@@ -188,7 +191,40 @@ const NewSalesInvoiceView = () => {
         return map;
     }, [inventoryItems]);
 
-    const marginThreshold = 20;
+    const marginThreshold = 10;
+
+    const getMinSellingPrice = useCallback((itemId: string, itemDivision: string, standardSellingPrice: number) => {
+        if (!itemId) return standardSellingPrice * (1 - marginThreshold / 100);
+        
+        // Exact match: itemId and division
+        const matchingCosts = unitCosts.filter(c => 
+            c.itemId === itemId && 
+            (c.division || '').trim().toLowerCase() === (itemDivision || '').trim().toLowerCase()
+        );
+        
+        if (matchingCosts.length > 0) {
+            matchingCosts.sort((a, b) => {
+                const dateA = new Date(a.date || a.createdAt || 0).getTime();
+                const dateB = new Date(b.date || b.createdAt || 0).getTime();
+                return dateB - dateA;
+            });
+            return Number(matchingCosts[0].minSellingPrice) || 0;
+        }
+        
+        // Fallback: itemId across any division
+        const fallbackCosts = unitCosts.filter(c => c.itemId === itemId);
+        if (fallbackCosts.length > 0) {
+            fallbackCosts.sort((a, b) => {
+                const dateA = new Date(a.date || a.createdAt || 0).getTime();
+                const dateB = new Date(b.date || b.createdAt || 0).getTime();
+                return dateB - dateA;
+            });
+            return Number(fallbackCosts[0].minSellingPrice) || 0;
+        }
+        
+        return standardSellingPrice * (1 - marginThreshold / 100);
+    }, [unitCosts, marginThreshold]);
+
     const approvalReason = useMemo(() => {
         let reason = '';
         const itemsToValidate = items.filter(i => i.item !== 'Select Item');
@@ -199,14 +235,14 @@ const NewSalesInvoiceView = () => {
                 const price = parseFloat(item.unitPrice) || 0;
                 const stock = parseFloat(inventoryItem.qtyOnHand || 0);
                 if (qty > stock) reason += `Insufficient stock for ${item.item} (Req: ${qty}, Avail: ${stock}). `;
-                const effectiveThreshold = marginThreshold / 100;
-                const minPrice = inventoryItem.sellingPrice * (1 - effectiveThreshold);
+                const standardSellingPrice = inventoryItem.sellingPrice || 0;
+                const minPrice = getMinSellingPrice(item.itemId, item.division, standardSellingPrice);
                 if (price < inventoryItem.purchasePrice) reason += `Price for ${item.item} (${price}) is below purchase price (${inventoryItem.purchasePrice}). `;
-                else if (price < minPrice) reason += `Price for ${item.item} (${price}) is below allowed margin threshold (min: ${minPrice.toFixed(2)}). `;
+                else if (price < minPrice) reason += `Price for ${item.item} (${price}) is below allowed minimum selling price (min: ${minPrice.toFixed(2)}). `;
             }
         }
         return reason.trim();
-    }, [items, inventoryMap]);
+    }, [items, inventoryMap, getMinSellingPrice]);
 
     const fetchReference = async () => {
         try {
@@ -525,6 +561,7 @@ const NewSalesInvoiceView = () => {
             issueDate: issueDate,
             dueDate: calculateDueDate(),
             docOptions: { ...options, division },
+            currency: currency,
             items: validItems.map(i => ({
                 itemId: i.itemId,
                 description: i.description,
@@ -729,7 +766,7 @@ const NewSalesInvoiceView = () => {
                                                                     ...i,
                                                                     item: val,
                                                                     itemId: invItem ? invItem.id : '',
-                                                                    unitPrice: invItem ? (invItem.sellingPrice || 0).toString() : i.unitPrice,
+                                                                    unitPrice: invItem ? getMinSellingPrice(invItem.id, item.division, invItem.sellingPrice || 0).toString() : i.unitPrice,
                                                                     description: invItem ? (invItem.description || val) : i.description
                                                                 } : i));
                                                             }}
@@ -767,7 +804,21 @@ const NewSalesInvoiceView = () => {
                                                 <td className="px-4 py-4">
                                                     <select
                                                         value={item.division}
-                                                        onChange={(e) => setItems(prev => prev.map(i => i.id === item.id ? { ...i, division: e.target.value } : i))}
+                                                        onChange={(e) => {
+                                                            const nextDivision = e.target.value;
+                                                            setItems(prev => prev.map(i => {
+                                                                if (i.id === item.id) {
+                                                                    const invItem = inventoryItems.find(x => x.id === i.itemId);
+                                                                    const standardSellingPrice = invItem ? (invItem.sellingPrice || 0) : 0;
+                                                                    return {
+                                                                        ...i,
+                                                                        division: nextDivision,
+                                                                        unitPrice: invItem ? getMinSellingPrice(i.itemId, nextDivision, standardSellingPrice).toString() : i.unitPrice
+                                                                    };
+                                                                }
+                                                                return i;
+                                                            }));
+                                                        }}
                                                         className="w-full bg-transparent border-none p-0 text-sm font-bold text-slate-700 outline-none appearance-none cursor-pointer"
                                                     >
                                                         <option value="General">General</option>
@@ -787,16 +838,16 @@ const NewSalesInvoiceView = () => {
                                                             }}
                                                             className={cn(
                                                                 "w-full bg-transparent border-none p-0 text-sm font-bold text-right outline-none",
-                                                                (parseFloat(item.qty) || 0) > (inventoryMap[item.item]?.stock || 0) ? "text-amber-600" : "text-slate-700"
+                                                                (parseFloat(item.qty) || 0) > (inventoryMap[item.item]?.qtyOnHand || 0) ? "text-amber-600" : "text-slate-700"
                                                             )}
                                                             placeholder="0"
                                                         />
                                                         <div className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter flex items-center justify-between w-full">
-                                                            <span>Stock: {(inventoryMap[item.item]?.stock || 0).toLocaleString()}</span>
+                                                            <span>Stock: {(inventoryMap[item.item]?.qtyOnHand || 0).toLocaleString()}</span>
                                                             <span className="text-indigo-500 font-black">{item.unit || ''}</span>
                                                         </div>
                                                     </div>
-                                                    {(parseFloat(item.qty) || 0) > (inventoryMap[item.item]?.stock || 0) && (
+                                                    {(parseFloat(item.qty) || 0) > (inventoryMap[item.item]?.qtyOnHand || 0) && (
                                                         <div className="absolute right-0 top-1/2 -translate-y-1/2 -mr-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                                                             <TooltipProvider>
                                                                 <Tooltip>
@@ -804,7 +855,7 @@ const NewSalesInvoiceView = () => {
                                                                         <AlertTriangle size={12} className="text-amber-500" />
                                                                     </TooltipTrigger>
                                                                     <TooltipContent className="bg-amber-50 border-amber-200 text-amber-800 text-[10px] p-2">
-                                                                        Insufficient stock: {inventoryMap[item.item]?.stock || 0} available.
+                                                                        Insufficient stock: {inventoryMap[item.item]?.qtyOnHand || 0} available.
                                                                     </TooltipContent>
                                                                 </Tooltip>
                                                             </TooltipProvider>
@@ -820,17 +871,17 @@ const NewSalesInvoiceView = () => {
                                                             className={cn(
                                                                 "w-full bg-transparent border-none p-0 text-sm font-bold text-right outline-none transition-colors",
                                                                 (parseFloat(item.unitPrice) || 0) < (inventoryMap[item.item]?.purchasePrice || 0) ||
-                                                                    (parseFloat(item.unitPrice) || 0) < (inventoryMap[item.item]?.sellingPrice * (1 - 20 / 100))
+                                                                    (parseFloat(item.unitPrice) || 0) < getMinSellingPrice(item.itemId, item.division, inventoryMap[item.item]?.sellingPrice || 0)
                                                                     ? "text-amber-600" : "text-slate-700"
                                                             )}
                                                             placeholder="0.00"
                                                         />
                                                         <div className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter opacity-60">
-                                                            Selling Price: {(inventoryMap[item.item]?.sellingPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            Selling Price: {getMinSellingPrice(item.itemId, item.division, inventoryMap[item.item]?.sellingPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                         </div>
                                                     </div>
                                                     {((parseFloat(item.unitPrice) || 0) < (inventoryMap[item.item]?.purchasePrice || 0) ||
-                                                        (parseFloat(item.unitPrice) || 0) < (inventoryMap[item.item]?.sellingPrice * (1 - 20 / 100))) && (
+                                                        (parseFloat(item.unitPrice) || 0) < getMinSellingPrice(item.itemId, item.division, inventoryMap[item.item]?.sellingPrice || 0)) && (
                                                             <div className="absolute right-0 top-1/2 -translate-y-1/2 -mr-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                                                                 <TooltipProvider>
                                                                     <Tooltip>
@@ -838,7 +889,7 @@ const NewSalesInvoiceView = () => {
                                                                             <AlertTriangle size={12} className="text-amber-500" />
                                                                         </TooltipTrigger>
                                                                         <TooltipContent className="bg-amber-50 border-amber-200 text-amber-800 text-[10px] p-2">
-                                                                            Price is below threshold or purchase cost. Review required.
+                                                                            Price is below allowed minimum selling price ({getMinSellingPrice(item.itemId, item.division, inventoryMap[item.item]?.sellingPrice || 0).toFixed(2)}) or purchase cost. Review required.
                                                                         </TooltipContent>
                                                                     </Tooltip>
                                                                 </TooltipProvider>

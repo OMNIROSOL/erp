@@ -8,13 +8,19 @@ async function main() {
   const adapter = new PrismaPg(pool);
   const prisma = new PrismaClient({ adapter });
 
-  const notes = await prisma.deliveryNote.findMany({
-    take: 5,
-    select: { id: true, reference: true, status: true }
+  const items = await prisma.item.findMany({
+    select: { id: true, itemCode: true, itemName: true, purchasePrice: true, sellingPrice: true }
   });
 
-  console.log('Sample Delivery Notes:');
-  console.log(JSON.stringify(notes, null, 2));
+  const unitCosts = await prisma.inventoryUnitCost.findMany({
+    select: { id: true, itemId: true, itemName: true, unitCost: true, marginPercent: true, minSellingPrice: true, division: true }
+  });
+
+  console.log('--- ITEMS ---');
+  console.log(JSON.stringify(items, null, 2));
+
+  console.log('--- INVENTORY UNIT COSTS ---');
+  console.log(JSON.stringify(unitCosts, null, 2));
 
   await pool.end();
 }

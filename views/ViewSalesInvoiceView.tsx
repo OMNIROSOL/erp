@@ -536,7 +536,7 @@ const ViewSalesInvoiceView = () => {
                             <div className="flex justify-between items-center bg-slate-50 p-4 border-t-2 border-slate-900 mt-2 print-bg-slate-50">
                                 <span className="text-[12px] font-bold uppercase tracking-[0.2em] text-slate-900">Total</span>
                                 <div className="text-right">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{invoice.currency?.split(' ')[0] || 'ZMW'}</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{(invoice.currency || invoice.customer?.currency?.split(' - ')[0] || 'ZMW').split(' ')[0]}</p>
                                     <p className="text-2xl font-bold text-slate-900 tracking-tighter">{totals.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                 </div>
                             </div>

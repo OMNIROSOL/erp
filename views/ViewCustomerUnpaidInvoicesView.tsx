@@ -69,7 +69,7 @@ const ViewCustomerUnpaidInvoicesView: React.FC = () => {
                             totalAmount,
                             paidAmount,
                             balance: totalAmount - paidAmount,
-                            currency: inv.currency || 'ZMW'
+                            currency: inv.currency || inv.customer?.currency?.split(' - ')[0] || 'ZMW'
                         };
                     });
 

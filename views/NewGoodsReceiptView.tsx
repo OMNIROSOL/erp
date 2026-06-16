@@ -527,9 +527,9 @@ const NewGoodsReceiptView = () => {
                                         type="file"
                                         multiple
                                         onChange={async (e) => {
-                                            const files = Array.from(e.target.files || []);
+                                            const files = Array.from(e.target.files || []) as File[];
                                             const newAttachments = await Promise.all(files.map(file => {
-                                                return new Promise((resolve) => {
+                                                return new Promise<any>((resolve) => {
                                                     const reader = new FileReader();
                                                     reader.onloadend = () => {
                                                         resolve({

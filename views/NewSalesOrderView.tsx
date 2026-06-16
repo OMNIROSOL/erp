@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useParams, Link, useLocation } from 'react-router-dom';
 import apiService from '../services/apiService';
-import { SalesOrder, ApprovalRequest, Division } from '../types';
+import { SalesOrder, ApprovalRequest, Division, InventoryUnitCost } from '../types';
 import Card from '../components/shared/Card';
 import Button from '../components/shared/Button';
 import FormInput from '../components/shared/FormInput';
@@ -149,6 +149,7 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
     const [dbInventory, setDbInventory] = useState<any[]>([]);
     const [footers, setFooters] = useState<any[]>([]);
     const [taxCodes, setTaxCodes] = useState<any[]>([]);
+    const [unitCosts, setUnitCosts] = useState<InventoryUnitCost[]>([]);
     const [items, setItems] = useState([{ id: Date.now(), item: 'Select Item', itemId: '', description: '', division: 'General', qty: '1', unitPrice: '0', discount: '', taxCode: '' }]);
     const [options, setOptions] = useState({
         amountsAreTaxInclusive: false,
@@ -178,6 +179,38 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
         return map;
     }, [inventoryItems]);
 
+    const getMinSellingPrice = useCallback((itemId: string, itemDivision: string, standardSellingPrice: number) => {
+        if (!itemId) return standardSellingPrice * (1 - marginThreshold / 100);
+        
+        // Exact match: itemId and division
+        const matchingCosts = unitCosts.filter(c => 
+            c.itemId === itemId && 
+            (c.division || '').trim().toLowerCase() === (itemDivision || '').trim().toLowerCase()
+        );
+        
+        if (matchingCosts.length > 0) {
+            matchingCosts.sort((a, b) => {
+                const dateA = new Date(a.date || a.createdAt || 0).getTime();
+                const dateB = new Date(b.date || b.createdAt || 0).getTime();
+                return dateB - dateA;
+            });
+            return Number(matchingCosts[0].minSellingPrice) || 0;
+        }
+        
+        // Fallback: itemId across any division
+        const fallbackCosts = unitCosts.filter(c => c.itemId === itemId);
+        if (fallbackCosts.length > 0) {
+            fallbackCosts.sort((a, b) => {
+                const dateA = new Date(a.date || a.createdAt || 0).getTime();
+                const dateB = new Date(b.date || b.createdAt || 0).getTime();
+                return dateB - dateA;
+            });
+            return Number(fallbackCosts[0].minSellingPrice) || 0;
+        }
+        
+        return standardSellingPrice * (1 - marginThreshold / 100);
+    }, [unitCosts, marginThreshold]);
+
     const requiresApproval = useMemo(() => {
         return items.some(item => {
             if (item.item === 'Select Item') return false;
@@ -189,12 +222,12 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
             const stock = parseFloat(inv.qtyOnHand) || 0;
             const purchasePrice = parseFloat(inv.purchasePrice) || 0;
             const sellingPrice = parseFloat(inv.sellingPrice) || 0;
-            const minMarginPrice = sellingPrice * (1 - marginThreshold / 100);
+            const minMarginPrice = getMinSellingPrice(item.itemId, item.division, sellingPrice);
 
             // Disable if insufficient stock or low margin
             return qty > stock || price < purchasePrice || price < minMarginPrice;
         });
-    }, [items, marginThreshold, dbInventory]);
+    }, [items, dbInventory, getMinSellingPrice]);
 
     const fetchReference = async () => {
         try {
@@ -208,13 +241,14 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
     useEffect(() => {
         const loadAll = async () => {
             try {
-                const [custs, itemsData, divs, invs, qts, taxCodesData] = await Promise.all([
+                const [custs, itemsData, divs, invs, qts, taxCodesData, unitCostsData] = await Promise.all([
                     apiService.getCustomers().catch(e => { console.error('Customers failed:', e); return []; }),
                     apiService.getItems().catch(e => { console.error('Items failed:', e); return []; }),
                     apiService.getDivisions().catch(e => { console.error('Divisions failed:', e); return []; }),
                     apiService.getInvoices().catch(e => { console.error('Invoices failed:', e); return []; }),
                     apiService.getQuotes().catch(e => { console.error('Quotes failed:', e); return []; }),
-                    apiService.getTaxCodes().catch(e => { console.error('Tax codes failed:', e); return []; })
+                    apiService.getTaxCodes().catch(e => { console.error('Tax codes failed:', e); return []; }),
+                    apiService.getInventoryUnitCosts().catch(e => { console.error('Unit costs failed:', e); return []; })
                 ]);
 
                 setCustomers(custs);
@@ -224,6 +258,7 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
                 setDbInvoices(invs);
                 setDbQuotes(qts);
                 setTaxCodes(taxCodesData);
+                setUnitCosts(unitCostsData);
 
                 // Fetch footers separately
                 apiService.getFooters()
@@ -710,7 +745,7 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
                                                                         ...i,
                                                                         item: val,
                                                                         itemId: invItem ? invItem.id : '',
-                                                                        unitPrice: invItem ? (invItem.sellingPrice || 0).toString() : i.unitPrice,
+                                                                        unitPrice: invItem ? getMinSellingPrice(invItem.id, item.division, invItem.sellingPrice || 0).toString() : i.unitPrice,
                                                                         description: invItem ? (invItem.description || val) : i.description
                                                                     } : i));
                                                                 }}
@@ -738,7 +773,21 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
                                                     <td className="px-4 py-4">
                                                         <select
                                                             value={item.division}
-                                                            onChange={(e) => setItems(prev => prev.map(i => i.id === item.id ? { ...i, division: e.target.value } : i))}
+                                                            onChange={(e) => {
+                                                                const nextDivision = e.target.value;
+                                                                setItems(prev => prev.map(i => {
+                                                                    if (i.id === item.id) {
+                                                                        const invItem = inventoryItems.find(x => x.id === i.itemId);
+                                                                        const standardSellingPrice = invItem ? (invItem.sellingPrice || 0) : 0;
+                                                                        return {
+                                                                            ...i,
+                                                                            division: nextDivision,
+                                                                            unitPrice: invItem ? getMinSellingPrice(i.itemId, nextDivision, standardSellingPrice).toString() : i.unitPrice
+                                                                        };
+                                                                    }
+                                                                    return i;
+                                                                }));
+                                                            }}
                                                             className="w-full bg-transparent border-none p-0 text-sm font-bold text-slate-700 outline-none appearance-none cursor-pointer"
                                                         >
                                                             <option value="General">General</option>
@@ -792,17 +841,17 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
                                                                 className={cn(
                                                                     "w-full bg-transparent border-none p-0 text-sm font-bold text-right outline-none",
                                                                     (parseFloat(item.unitPrice) || 0) < (dbInventory.find((i: any) => i.itemName === item.item)?.purchasePrice || 0) ||
-                                                                        (parseFloat(item.unitPrice) || 0) < (dbInventory.find((i: any) => i.itemName === item.item)?.sellingPrice * (1 - marginThreshold / 100))
+                                                                        (parseFloat(item.unitPrice) || 0) < getMinSellingPrice(item.itemId, item.division, dbInventory.find((i: any) => i.itemName === item.item)?.sellingPrice || 0)
                                                                         ? "text-rose-600" : "text-slate-700"
                                                                 )}
                                                                 placeholder="0.00"
                                                             />
                                                             <div className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">
-                                                                Selling Price: {(dbInventory.find(i => i.itemName === item.item)?.sellingPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                Selling Price: {getMinSellingPrice(item.itemId, item.division, dbInventory.find(i => i.itemName === item.item)?.sellingPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                             </div>
                                                         </div>
                                                         {((parseFloat(item.unitPrice) || 0) < (dbInventory.find(i => i.itemName === item.item)?.purchasePrice || 0) ||
-                                                            (parseFloat(item.unitPrice) || 0) < (dbInventory.find(i => i.itemName === item.item)?.sellingPrice * (1 - marginThreshold / 100))) && (
+                                                            (parseFloat(item.unitPrice) || 0) < getMinSellingPrice(item.itemId, item.division, dbInventory.find((i: any) => i.itemName === item.item)?.sellingPrice || 0)) && (
                                                                 <div className="absolute right-0 top-1/2 -translate-y-1/2 -mr-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                                                                     <TooltipProvider>
                                                                         <Tooltip>
@@ -810,7 +859,7 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
                                                                                 <AlertTriangle size={12} className="text-rose-500" />
                                                                             </TooltipTrigger>
                                                                             <TooltipContent className="bg-rose-50 border-rose-200 text-rose-800 text-[10px] p-2">
-                                                                                Price below threshold. Creation disabled.
+                                                                                Price is below allowed minimum selling price ({getMinSellingPrice(item.itemId, item.division, dbInventory.find((i: any) => i.itemName === item.item)?.sellingPrice || 0).toFixed(2)}) or purchase cost. Creation disabled.
                                                                             </TooltipContent>
                                                                         </Tooltip>
                                                                     </TooltipProvider>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams, Link, useLocation } from 'react-router-dom';
 import apiService from '../services/apiService';
-import { PurchaseOrder, Footer } from '../types';
+import { PurchaseOrder, FooterTemplate } from '../types';
 import Card from '../components/shared/Card';
 import Button from '../components/shared/Button';
 import FormInput from '../components/shared/FormInput';
@@ -125,7 +125,7 @@ const NewPurchaseOrderView = () => {
 
     const [dbSuppliers, setDbSuppliers] = useState<any[]>([]);
     const [dbItems, setDbItems] = useState<any[]>([]);
-    const [dbFooters, setDbFooters] = useState<Footer[]>([]);
+    const [dbFooters, setDbFooters] = useState<FooterTemplate[]>([]);
     const [taxCodes, setTaxCodes] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -528,7 +528,7 @@ const NewPurchaseOrderView = () => {
                                                                 className="w-full bg-transparent border-none p-0 text-sm font-bold text-right outline-none text-slate-700"
                                                             />
                                                             <div className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter flex items-center justify-between w-full">
-                                                                <span>Stock: {(dbItems.find(it => it.itemName === item.item)?.stock || 0).toLocaleString()}</span>
+                                                                <span>Stock: {(dbItems.find(it => it.itemName === item.item)?.qtyOnHand || 0).toLocaleString()}</span>
                                                                 <span className="text-indigo-500 font-black">{dbItems.find(it => it.itemName === item.item)?.unit || ''}</span>
                                                             </div>
                                                         </div>
@@ -788,9 +788,9 @@ const NewPurchaseOrderView = () => {
                                         type="file"
                                         multiple
                                         onChange={async (e) => {
-                                            const files = Array.from(e.target.files || []);
+                                            const files = Array.from(e.target.files || []) as File[];
                                             const newAttachments = await Promise.all(files.map(file => {
-                                                return new Promise((resolve) => {
+                                                return new Promise<any>((resolve) => {
                                                     const reader = new FileReader();
                                                     reader.onloadend = () => {
                                                         resolve({

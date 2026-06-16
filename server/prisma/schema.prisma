@@ -76,6 +76,7 @@ model Invoice {
   grandTotal Decimal?      @default(0) @map("grand_total") @db.Decimal(15, 2)
   balanceDue Decimal?      @default(0) @map("balance_due") @db.Decimal(15, 2)
   status     String?       @default("Unpaid")
+  currency   String?       @default("ZMW")
   docOptions Json?         @default("{}") @map("doc_options")
   createdAt  DateTime?     @default(now()) @map("created_at") @db.Timestamptz(6)
   items      InvoiceItem[]
@@ -440,6 +441,7 @@ model PurchaseOrder {
   currency    String?             @default("ZMW")
   amount      Decimal?            @default(0) @db.Decimal(15, 2)
   status      String?              @default("Open")
+  estimatedArrival DateTime?        @map("estimated_arrival") @db.Date
   sourceEnquiryId String?          @map("source_enquiry_id") @db.Uuid
   createdAt   DateTime?            @default(now()) @map("created_at") @db.Timestamptz(6)
   docOptions  Json?                @default("{}") @map("doc_options")

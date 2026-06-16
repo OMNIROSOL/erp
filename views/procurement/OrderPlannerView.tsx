@@ -11,7 +11,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 const OrderPlannerView = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [savingLeadTime, setSavingLeadTime] = useState(false);
   const [data, setData] = useState<any>(null);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -25,7 +24,8 @@ const OrderPlannerView = () => {
     leadTimeProcessing: '0',
     leadTimeProduction: '0',
     leadTimeShipping: '0',
-    leadTimeRoad: '0'
+    leadTimeRoad: '0',
+    leadTimeExtra: '0'
   });
 
   // Selected items and order quantities
@@ -74,7 +74,8 @@ const OrderPlannerView = () => {
         leadTimeProcessing: String(selectedSupplier.leadTimeProcessing || 0),
         leadTimeProduction: String(selectedSupplier.leadTimeProduction || 0),
         leadTimeShipping: String(selectedSupplier.leadTimeShipping || 0),
-        leadTimeRoad: String(selectedSupplier.leadTimeRoad || 0)
+        leadTimeRoad: String(selectedSupplier.leadTimeRoad || 0),
+        leadTimeExtra: String(selectedSupplier.leadTimeExtra || 0)
       });
       // Clear selections on supplier change
       setSelectedItemIds({});
@@ -86,7 +87,8 @@ const OrderPlannerView = () => {
     return (Number(leadTimes.leadTimeProcessing) || 0) +
            (Number(leadTimes.leadTimeProduction) || 0) +
            (Number(leadTimes.leadTimeShipping) || 0) +
-           (Number(leadTimes.leadTimeRoad) || 0);
+           (Number(leadTimes.leadTimeRoad) || 0) +
+           (Number(leadTimes.leadTimeExtra) || 0);
   }, [leadTimes]);
 
   const supplierItems = useMemo(() => {
@@ -124,30 +126,6 @@ const OrderPlannerView = () => {
     }
   }, [supplierItems]);
 
-  const handleSaveLeadTimes = async () => {
-    if (!selectedSupplierId) return;
-    setSavingLeadTime(true);
-    try {
-      await apiService.updateSupplierLeadTime(selectedSupplierId, {
-        leadTimeProcessing: Number(leadTimes.leadTimeProcessing) || 0,
-        leadTimeProduction: Number(leadTimes.leadTimeProduction) || 0,
-        leadTimeShipping: Number(leadTimes.leadTimeShipping) || 0,
-        leadTimeRoad: Number(leadTimes.leadTimeRoad) || 0,
-        moq: Number(leadTimes.moq) || 0,
-        containerCapacity: leadTimes.containerCapacity,
-        brand: leadTimes.brand,
-        country: leadTimes.country
-      });
-      alert('Supplier order planning sheet settings updated successfully!');
-      // Refresh planner details
-      loadPlannerData();
-    } catch (err) {
-      console.error('Failed to update lead times:', err);
-      alert('Error updating lead times.');
-    } finally {
-      setSavingLeadTime(false);
-    }
-  };
 
   const handleLoadHistory = async (itemId: string) => {
     setActiveHistoryItemId(itemId);
@@ -261,13 +239,9 @@ const OrderPlannerView = () => {
               <h2 className="text-[12px] font-black uppercase tracking-[0.2em] text-blue-600 flex items-center gap-2">
                 <Clock size={16} /> Lead Times & Planning Specs
               </h2>
-              <button
-                onClick={handleSaveLeadTimes}
-                disabled={savingLeadTime}
-                className="text-[11px] font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 flex items-center gap-1.5 transition-colors disabled:opacity-50"
-              >
-                <Save size={14} /> {savingLeadTime ? 'Saving...' : 'Save Settings'}
-              </button>
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-2.5 py-1 rounded-md">
+                Admin Master
+              </span>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -276,9 +250,9 @@ const OrderPlannerView = () => {
                 <input
                   type="text"
                   value={leadTimes.brand}
-                  onChange={(e) => setLeadTimes({ ...leadTimes, brand: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold"
-                  placeholder="e.g. VOLVO"
+                  disabled
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-500 cursor-not-allowed"
+                  placeholder="N/A"
                 />
               </div>
               <div className="space-y-1">
@@ -286,9 +260,9 @@ const OrderPlannerView = () => {
                 <input
                   type="text"
                   value={leadTimes.country}
-                  onChange={(e) => setLeadTimes({ ...leadTimes, country: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold"
-                  placeholder="e.g. Sweden"
+                  disabled
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-500 cursor-not-allowed"
+                  placeholder="N/A"
                 />
               </div>
               <div className="space-y-1">
@@ -296,8 +270,8 @@ const OrderPlannerView = () => {
                 <input
                   type="number"
                   value={leadTimes.leadTimeProcessing}
-                  onChange={(e) => setLeadTimes({ ...leadTimes, leadTimeProcessing: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold"
+                  disabled
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-500 cursor-not-allowed"
                 />
               </div>
               <div className="space-y-1">
@@ -305,8 +279,8 @@ const OrderPlannerView = () => {
                 <input
                   type="number"
                   value={leadTimes.leadTimeProduction}
-                  onChange={(e) => setLeadTimes({ ...leadTimes, leadTimeProduction: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold"
+                  disabled
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-500 cursor-not-allowed"
                 />
               </div>
               <div className="space-y-1">
@@ -314,8 +288,8 @@ const OrderPlannerView = () => {
                 <input
                   type="number"
                   value={leadTimes.leadTimeShipping}
-                  onChange={(e) => setLeadTimes({ ...leadTimes, leadTimeShipping: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold"
+                  disabled
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-500 cursor-not-allowed"
                 />
               </div>
               <div className="space-y-1">
@@ -323,8 +297,17 @@ const OrderPlannerView = () => {
                 <input
                   type="number"
                   value={leadTimes.leadTimeRoad}
-                  onChange={(e) => setLeadTimes({ ...leadTimes, leadTimeRoad: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold"
+                  disabled
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-500 cursor-not-allowed"
+                />
+              </div>
+              <div className="space-y-1 col-span-2">
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Extra Days</label>
+                <input
+                  type="number"
+                  value={leadTimes.leadTimeExtra}
+                  disabled
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-rose-500/80 cursor-not-allowed"
                 />
               </div>
               <div className="space-y-1">
@@ -332,8 +315,8 @@ const OrderPlannerView = () => {
                 <input
                   type="number"
                   value={leadTimes.moq}
-                  onChange={(e) => setLeadTimes({ ...leadTimes, moq: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-indigo-600"
+                  disabled
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-indigo-500/80 cursor-not-allowed"
                 />
               </div>
               <div className="space-y-1">
@@ -341,9 +324,9 @@ const OrderPlannerView = () => {
                 <input
                   type="text"
                   value={leadTimes.containerCapacity}
-                  onChange={(e) => setLeadTimes({ ...leadTimes, containerCapacity: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold"
-                  placeholder="e.g. 20ft container"
+                  disabled
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-500 cursor-not-allowed"
+                  placeholder="N/A"
                 />
               </div>
             </div>

@@ -179,6 +179,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed }) => {
         { label: 'Purchase Enquiry', path: '/purchase-quotes', id: 'purchase-quotes' },
         { label: 'Purchase Orders', path: '/purchase-orders', id: 'purchase-orders' },
         { label: 'Order Planner', path: '/purchase/order-planner', id: 'purchase-orders' },
+        ...(isAdmin ? [{ label: 'Lead Time Master', path: '/purchase/lead-time-master', id: 'suppliers' }] : []),
         { label: 'What to Order', path: '/purchase/what-to-order', id: 'purchase-orders' },
         { label: 'Incoming Shipments', path: '/purchase/incoming-shipments', id: 'purchase-orders' },
         { label: 'Costing Reports', path: '/purchase/costing-reports', id: 'purchase-orders' },

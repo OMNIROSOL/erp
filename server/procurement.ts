@@ -120,7 +120,8 @@ router.get('/planning', async (req, res) => {
         totalLeadTime = (supplier.leadTimeProcessing || 0) + 
                         (supplier.leadTimeProduction || 0) + 
                         (supplier.leadTimeShipping || 0) + 
-                        (supplier.leadTimeRoad || 0);
+                        (supplier.leadTimeRoad || 0) + 
+                        (supplier.leadTimeExtra || 0);
         leadTimeMonths = parseFloat((totalLeadTime / 30).toFixed(2));
         
         const eta = new Date();
@@ -172,7 +173,7 @@ router.get('/planning', async (req, res) => {
 // 2. PUT /api/procurement/suppliers/:id/lead-time
 router.put('/suppliers/:id/lead-time', async (req, res) => {
   const { id } = req.params;
-  const { leadTimeProcessing, leadTimeProduction, leadTimeShipping, leadTimeRoad, moq, containerCapacity, brand, country } = req.body;
+  const { leadTimeProcessing, leadTimeProduction, leadTimeShipping, leadTimeRoad, leadTimeExtra, moq, containerCapacity, brand, country } = req.body;
   try {
     const updated = await prisma.suppliers.update({
       where: { id },
@@ -181,6 +182,7 @@ router.put('/suppliers/:id/lead-time', async (req, res) => {
         leadTimeProduction: leadTimeProduction ? parseInt(leadTimeProduction) : 0,
         leadTimeShipping: leadTimeShipping ? parseInt(leadTimeShipping) : 0,
         leadTimeRoad: leadTimeRoad ? parseInt(leadTimeRoad) : 0,
+        leadTimeExtra: leadTimeExtra ? parseInt(leadTimeExtra) : 0,
         moq: moq ? parseFloat(moq) : 0,
         containerCapacity,
         brand,

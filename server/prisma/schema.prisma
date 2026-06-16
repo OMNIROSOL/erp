@@ -378,6 +378,7 @@ model suppliers {
   leadTimeProduction         Int?                        @default(0) @map("lead_time_production")
   leadTimeShipping           Int?                        @default(0) @map("lead_time_shipping")
   leadTimeRoad               Int?                        @default(0) @map("lead_time_road")
+  leadTimeExtra              Int?                        @default(0) @map("lead_time_extra")
   procurementRecommendations ProcurementRecommendation[]
   procurementPriceHistories  ProcurementPriceHistory[]
 

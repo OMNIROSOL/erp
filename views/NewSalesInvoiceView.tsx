@@ -153,18 +153,22 @@ const NewSalesInvoiceView = () => {
     const [dbFooters, setDbFooters] = useState<FooterTemplate[]>([]);
     const [taxCodes, setTaxCodes] = useState<any[]>([]);
     const [unitCosts, setUnitCosts] = useState<InventoryUnitCost[]>([]);
+    const [dbInvoices, setDbInvoices] = useState<any[]>([]);
+    const [dbQuotes, setDbQuotes] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         const loadMasterData = async () => {
             try {
-                const [custs, itemsData, divs, footersData, taxCodesData, unitCostsData] = await Promise.all([
+                const [custs, itemsData, divs, footersData, taxCodesData, unitCostsData, invs, qts] = await Promise.all([
                     apiService.getCustomers().catch(e => { console.error('Customers failed:', e); return []; }),
                     apiService.getItems().catch(e => { console.error('Items failed:', e); return []; }),
                     apiService.getDivisions().catch(e => { console.error('Divisions failed:', e); return []; }),
                     apiService.getFooters().catch(e => { console.error('Footers failed:', e); return []; }),
                     apiService.getTaxCodes().catch(e => { console.error('Tax codes failed:', e); return []; }),
-                    apiService.getInventoryUnitCosts().catch(e => { console.error('Unit costs failed:', e); return []; })
+                    apiService.getInventoryUnitCosts().catch(e => { console.error('Unit costs failed:', e); return []; }),
+                    apiService.getInvoices().catch(e => { console.error('Invoices failed:', e); return []; }),
+                    apiService.getQuotes().catch(e => { console.error('Quotes failed:', e); return []; })
                 ]);
                 setCustomers(custs);
                 setInventoryItems(itemsData);
@@ -172,6 +176,8 @@ const NewSalesInvoiceView = () => {
                 setDbFooters(footersData);
                 setTaxCodes(taxCodesData);
                 setUnitCosts(unitCostsData);
+                setDbInvoices(invs);
+                setDbQuotes(qts);
             } catch (err) {
                 console.error('Failed to load master data:', err);
             }
@@ -237,7 +243,8 @@ const NewSalesInvoiceView = () => {
                 if (qty > stock) reason += `Insufficient stock for ${item.item} (Req: ${qty}, Avail: ${stock}). `;
                 const standardSellingPrice = inventoryItem.sellingPrice || 0;
                 const minPrice = getMinSellingPrice(item.itemId, item.division, standardSellingPrice);
-                if (price < inventoryItem.purchasePrice) reason += `Price for ${item.item} (${price}) is below purchase price (${inventoryItem.purchasePrice}). `;
+                const purchasePrice = inventoryItem.avgCost !== undefined && inventoryItem.avgCost !== null ? Number(inventoryItem.avgCost) : (Number(inventoryItem.purchasePrice) || 0);
+                if (price < purchasePrice) reason += `Price for ${item.item} (${price}) is below purchase price (${purchasePrice}). `;
                 else if (price < minPrice) reason += `Price for ${item.item} (${price}) is below allowed minimum selling price (min: ${minPrice.toFixed(2)}). `;
             }
         }
@@ -446,10 +453,49 @@ const NewSalesInvoiceView = () => {
 
     // Insights Logic
     const itemHistory = useMemo(() => {
-        // Mocking empty history for now to avoid mockData dependency
-        // In a real scenario, we could fetch this from the database
-        return { global: {}, clientSales: {}, clientQuotes: {} };
-    }, [customer]);
+        const global: Record<string, any[]> = {};
+        const clientSales: Record<string, any[]> = {};
+        const clientQuotes: Record<string, any[]> = {};
+
+        dbInvoices.forEach(doc => {
+            if (!doc.items) return;
+            doc.items.forEach((i: any) => {
+                const itemName = i.item?.itemName || i.item;
+                if (!itemName || itemName === 'Select Item') return;
+                const entry = { date: doc.issueDate, price: parseFloat(i.unitPrice) || 0, qty: parseFloat(i.qty) || 0, customer: doc.customer?.name || doc.customer, ref: doc.reference, type: 'Invoice' };
+                if (!global[itemName]) global[itemName] = [];
+                global[itemName].push(entry);
+                if (customer && (doc.customer?.name === customer || doc.customer === customer)) {
+                    if (!clientSales[itemName]) clientSales[itemName] = [];
+                    clientSales[itemName].push(entry);
+                }
+            });
+        });
+
+        dbQuotes.forEach(doc => {
+            if (!doc.items) return;
+            doc.items.forEach((i: any) => {
+                const itemName = i.item?.itemName || i.item;
+                if (!itemName || itemName === 'Select Item') return;
+                const entry = { date: doc.issueDate, price: parseFloat(i.unitPrice) || 0, qty: parseFloat(i.qty) || 0, customer: doc.customer?.name || doc.customer, ref: doc.reference, type: 'Quote' };
+                if (customer && (doc.customer?.name === customer || doc.customer === customer)) {
+                    if (!clientQuotes[itemName]) clientQuotes[itemName] = [];
+                    clientQuotes[itemName].push(entry);
+                }
+            });
+        });
+
+        const sortAndSlice = (history: Record<string, any[]>) => {
+            Object.keys(history).forEach(item => {
+                history[item].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                history[item] = history[item].slice(0, 3);
+            });
+        };
+        sortAndSlice(global);
+        sortAndSlice(clientSales);
+        sortAndSlice(clientQuotes);
+        return { global, clientSales, clientQuotes };
+    }, [customer, dbInvoices, dbQuotes]);
 
     const [isDeliveryNoteLinked, setIsDeliveryNoteLinked] = useState(false);
     useEffect(() => {
@@ -870,7 +916,7 @@ const NewSalesInvoiceView = () => {
                                                             onChange={(e) => setItems(prev => prev.map(i => i.id === item.id ? { ...i, unitPrice: e.target.value } : i))}
                                                             className={cn(
                                                                 "w-full bg-transparent border-none p-0 text-sm font-bold text-right outline-none transition-colors",
-                                                                (parseFloat(item.unitPrice) || 0) < (inventoryMap[item.item]?.purchasePrice || 0) ||
+                                                                (parseFloat(item.unitPrice) || 0) < (inventoryMap[item.item]?.avgCost !== undefined && inventoryMap[item.item]?.avgCost !== null ? inventoryMap[item.item]?.avgCost : (inventoryMap[item.item]?.purchasePrice || 0)) ||
                                                                     (parseFloat(item.unitPrice) || 0) < getMinSellingPrice(item.itemId, item.division, inventoryMap[item.item]?.sellingPrice || 0)
                                                                     ? "text-amber-600" : "text-slate-700"
                                                             )}
@@ -880,7 +926,7 @@ const NewSalesInvoiceView = () => {
                                                             Selling Price: {getMinSellingPrice(item.itemId, item.division, inventoryMap[item.item]?.sellingPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                         </div>
                                                     </div>
-                                                    {((parseFloat(item.unitPrice) || 0) < (inventoryMap[item.item]?.purchasePrice || 0) ||
+                                                    {((parseFloat(item.unitPrice) || 0) < (inventoryMap[item.item]?.avgCost !== undefined && inventoryMap[item.item]?.avgCost !== null ? inventoryMap[item.item]?.avgCost : (inventoryMap[item.item]?.purchasePrice || 0)) ||
                                                         (parseFloat(item.unitPrice) || 0) < getMinSellingPrice(item.itemId, item.division, inventoryMap[item.item]?.sellingPrice || 0)) && (
                                                             <div className="absolute right-0 top-1/2 -translate-y-1/2 -mr-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                                                                 <TooltipProvider>

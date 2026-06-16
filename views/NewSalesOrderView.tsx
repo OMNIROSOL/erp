@@ -501,16 +501,15 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
                 const price = parseFloat(item.unitPrice) || 0;
                 const stock = parseFloat(inventoryItem.qtyOnHand) || 0;
                 if (qty > stock) reason += `Insufficient stock for ${item.item} (Req: ${qty}, Avail: ${stock}). `;
-                const effectiveThreshold = marginThreshold / 100;
                 const sellingPrice = parseFloat(inventoryItem.sellingPrice) || 0;
-                const purchasePrice = parseFloat(inventoryItem.purchasePrice) || 0;
-                const minPrice = sellingPrice * (1 - effectiveThreshold);
+                const purchasePrice = inventoryItem.avgCost !== undefined && inventoryItem.avgCost !== null ? parseFloat(inventoryItem.avgCost) : (parseFloat(inventoryItem.purchasePrice) || 0);
+                const minPrice = getMinSellingPrice(item.itemId, item.division, sellingPrice);
                 if (price < purchasePrice) reason += `Price for ${item.item} (${price}) is below purchase price (${purchasePrice}). `;
-                else if (price < minPrice) reason += `Price for ${item.item} (${price}) is below allowed margin threshold (min: ${minPrice.toFixed(2)}). `;
+                else if (price < minPrice) reason += `Price for ${item.item} (${price}) is below allowed minimum selling price (min: ${minPrice.toFixed(2)}). `;
             }
         }
         return reason.trim();
-    }, [items, marginThreshold, dbInventory]);
+    }, [items, marginThreshold, dbInventory, getMinSellingPrice]);
 
     const calculations = useMemo(() => {
         let subtotal = 0;
@@ -731,6 +730,7 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
                                     <tbody className="divide-y divide-slate-100">
                                         {items.map((item, index) => {
                                             const calc = calculations.lineCalcs[index];
+                                            const inventoryItem = dbInventory.find(i => i.itemName === item.item);
                                             return (
                                                 <tr key={item.id} className="group hover:bg-slate-50/50 transition-colors">
                                                     {options.columnLineNumber && <td className="px-4 py-4 text-xs font-bold text-slate-400 text-center">{index + 1}</td>}
@@ -807,14 +807,14 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
                                                                 }}
                                                                 className={cn(
                                                                     "w-full bg-transparent border-none p-0 text-sm font-bold text-right outline-none",
-                                                                    (parseFloat(item.qty) || 0) > (dbInventory.find((i: any) => i.itemName === item.item)?.qtyOnHand || 0) ? "text-amber-600" : "text-slate-700"
+                                                                    (parseFloat(item.qty) || 0) > (inventoryItem?.qtyOnHand || 0) ? "text-amber-600" : "text-slate-700"
                                                                 )}
                                                             />
                                                             <div className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter flex items-center justify-between w-full">
-                                                                <span>Stock: {(dbInventory.find((i: any) => i.itemName === item.item)?.qtyOnHand || 0).toLocaleString()}</span>
+                                                                <span>Stock: {(inventoryItem?.qtyOnHand || 0).toLocaleString()}</span>
                                                             </div>
                                                         </div>
-                                                        {(parseFloat(item.qty) || 0) > (dbInventory.find((i: any) => i.itemName === item.item)?.qtyOnHand || 0) && (
+                                                        {(parseFloat(item.qty) || 0) > (inventoryItem?.qtyOnHand || 0) && (
                                                             <div className="absolute right-0 top-1/2 -translate-y-1/2 -mr-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                                                                 <TooltipProvider>
                                                                     <Tooltip>
@@ -822,7 +822,7 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
                                                                             <AlertTriangle size={12} className="text-rose-500" />
                                                                         </TooltipTrigger>
                                                                         <TooltipContent className="bg-rose-50 border-rose-200 text-rose-800 text-[10px] p-2">
-                                                                            Insufficient stock: {(dbInventory.find((i: any) => i.itemName === item.item)?.qtyOnHand || 0)} available. Creation disabled.
+                                                                            Insufficient stock: {(inventoryItem?.qtyOnHand || 0)} available. Creation disabled.
                                                                         </TooltipContent>
                                                                     </Tooltip>
                                                                 </TooltipProvider>
@@ -840,18 +840,18 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
                                                                 }}
                                                                 className={cn(
                                                                     "w-full bg-transparent border-none p-0 text-sm font-bold text-right outline-none",
-                                                                    (parseFloat(item.unitPrice) || 0) < (dbInventory.find((i: any) => i.itemName === item.item)?.purchasePrice || 0) ||
-                                                                        (parseFloat(item.unitPrice) || 0) < getMinSellingPrice(item.itemId, item.division, dbInventory.find((i: any) => i.itemName === item.item)?.sellingPrice || 0)
+                                                                    (parseFloat(item.unitPrice) || 0) < (inventoryItem?.avgCost !== undefined && inventoryItem?.avgCost !== null ? parseFloat(inventoryItem.avgCost) : parseFloat(inventoryItem?.purchasePrice || 0)) ||
+                                                                        (parseFloat(item.unitPrice) || 0) < getMinSellingPrice(item.itemId, item.division, inventoryItem?.sellingPrice || 0)
                                                                         ? "text-rose-600" : "text-slate-700"
                                                                 )}
                                                                 placeholder="0.00"
                                                             />
                                                             <div className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">
-                                                                Selling Price: {getMinSellingPrice(item.itemId, item.division, dbInventory.find(i => i.itemName === item.item)?.sellingPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                Selling Price: {getMinSellingPrice(item.itemId, item.division, inventoryItem?.sellingPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                             </div>
                                                         </div>
-                                                        {((parseFloat(item.unitPrice) || 0) < (dbInventory.find(i => i.itemName === item.item)?.purchasePrice || 0) ||
-                                                            (parseFloat(item.unitPrice) || 0) < getMinSellingPrice(item.itemId, item.division, dbInventory.find((i: any) => i.itemName === item.item)?.sellingPrice || 0)) && (
+                                                        {((parseFloat(item.unitPrice) || 0) < (inventoryItem?.avgCost !== undefined && inventoryItem?.avgCost !== null ? parseFloat(inventoryItem.avgCost) : parseFloat(inventoryItem?.purchasePrice || 0)) ||
+                                                            (parseFloat(item.unitPrice) || 0) < getMinSellingPrice(item.itemId, item.division, inventoryItem?.sellingPrice || 0)) && (
                                                                 <div className="absolute right-0 top-1/2 -translate-y-1/2 -mr-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                                                                     <TooltipProvider>
                                                                         <Tooltip>
@@ -859,7 +859,7 @@ const NewSalesOrderView = ({ setApprovalRequests }: { setApprovalRequests?: Reac
                                                                                 <AlertTriangle size={12} className="text-rose-500" />
                                                                             </TooltipTrigger>
                                                                             <TooltipContent className="bg-rose-50 border-rose-200 text-rose-800 text-[10px] p-2">
-                                                                                Price is below allowed minimum selling price ({getMinSellingPrice(item.itemId, item.division, dbInventory.find((i: any) => i.itemName === item.item)?.sellingPrice || 0).toFixed(2)}) or purchase cost. Creation disabled.
+                                                                                Price is below allowed minimum selling price ({getMinSellingPrice(item.itemId, item.division, inventoryItem?.sellingPrice || 0).toFixed(2)}) or purchase cost. Creation disabled.
                                                                             </TooltipContent>
                                                                         </Tooltip>
                                                                     </TooltipProvider>

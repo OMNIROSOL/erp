@@ -157,6 +157,8 @@ const EditSalesQuoteView = () => {
     const [footers, setFooters] = useState<any[]>([]);
     const [taxCodes, setTaxCodes] = useState<any[]>([]);
     const [unitCosts, setUnitCosts] = useState<InventoryUnitCost[]>([]);
+    const [dbInvoices, setDbInvoices] = useState<any[]>([]);
+    const [dbQuotes, setDbQuotes] = useState<any[]>([]);
     const [availableDivisions, setAvailableDivisions] = useState<Division[]>([]);
     const [items, setItems] = useState([{ id: Date.now(), item: 'Select Item', itemId: '', description: '', division: 'General', qty: '1', unitPrice: '0', discount: '', taxCode: '' }]);
     const [options, setOptions] = useState({
@@ -201,12 +203,14 @@ const EditSalesQuoteView = () => {
         const loadMasterData = async () => {
             try {
                 // Fetch basic master data
-                const [custs, itemsData, divs, taxCodesData, unitCostsData] = await Promise.all([
+                const [custs, itemsData, divs, taxCodesData, unitCostsData, invs, qts] = await Promise.all([
                     apiService.getCustomers().catch(e => { console.error('Customers failed:', e); return []; }),
                     apiService.getItems().catch(e => { console.error('Items failed:', e); return []; }),
                     apiService.getDivisions().catch(e => { console.error('Divisions failed:', e); return []; }),
                     apiService.getTaxCodes().catch(e => { console.error('Tax codes failed:', e); return []; }),
-                    apiService.getInventoryUnitCosts().catch(e => { console.error('Unit costs failed:', e); return []; })
+                    apiService.getInventoryUnitCosts().catch(e => { console.error('Unit costs failed:', e); return []; }),
+                    apiService.getInvoices().catch(e => { console.error('Invoices failed:', e); return []; }),
+                    apiService.getQuotes().catch(e => { console.error('Quotes failed:', e); return []; })
                 ]);
 
                 setCustomers(custs);
@@ -214,6 +218,8 @@ const EditSalesQuoteView = () => {
                 setAvailableDivisions(divs);
                 setTaxCodes(taxCodesData);
                 setUnitCosts(unitCostsData);
+                setDbInvoices(invs);
+                setDbQuotes(qts);
 
                 // Fetch footers separately as it's a new feature and shouldn't block the form
                 apiService.getFooters()
@@ -370,9 +376,49 @@ const EditSalesQuoteView = () => {
     }, [customer, customers, currency]);
 
     const itemHistory = useMemo(() => {
-        // Mocking empty history for now to avoid mockData dependency
-        return { global: {}, clientSales: {}, clientQuotes: {} };
-    }, [customer]);
+        const global: Record<string, any[]> = {};
+        const clientSales: Record<string, any[]> = {};
+        const clientQuotes: Record<string, any[]> = {};
+
+        dbInvoices.forEach(doc => {
+            if (!doc.items) return;
+            doc.items.forEach((i: any) => {
+                const itemName = i.item?.itemName || i.item;
+                if (!itemName || itemName === 'Select Item') return;
+                const entry = { date: doc.issueDate, price: parseFloat(i.unitPrice) || 0, qty: parseFloat(i.qty) || 0, customer: doc.customer?.name || doc.customer, ref: doc.reference, type: 'Invoice' };
+                if (!global[itemName]) global[itemName] = [];
+                global[itemName].push(entry);
+                if (customer && (doc.customer?.name === customer || doc.customer === customer)) {
+                    if (!clientSales[itemName]) clientSales[itemName] = [];
+                    clientSales[itemName].push(entry);
+                }
+            });
+        });
+
+        dbQuotes.forEach(doc => {
+            if (!doc.items) return;
+            doc.items.forEach((i: any) => {
+                const itemName = i.item?.itemName || i.item;
+                if (!itemName || itemName === 'Select Item') return;
+                const entry = { date: doc.issueDate, price: parseFloat(i.unitPrice) || 0, qty: parseFloat(i.qty) || 0, customer: doc.customer?.name || doc.customer, ref: doc.reference, type: 'Quote' };
+                if (customer && (doc.customer?.name === customer || doc.customer === customer)) {
+                    if (!clientQuotes[itemName]) clientQuotes[itemName] = [];
+                    clientQuotes[itemName].push(entry);
+                }
+            });
+        });
+
+        const sortAndSlice = (history: Record<string, any[]>) => {
+            Object.keys(history).forEach(item => {
+                history[item].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                history[item] = history[item].slice(0, 3);
+            });
+        };
+        sortAndSlice(global);
+        sortAndSlice(clientSales);
+        sortAndSlice(clientQuotes);
+        return { global, clientSales, clientQuotes };
+    }, [customer, dbInvoices, dbQuotes]);
 
 
     const calculations = useMemo(() => {
@@ -484,7 +530,7 @@ const EditSalesQuoteView = () => {
             if (inventoryItem) {
                 const price = parseFloat(item.unitPrice) || 0;
                 const sellingPrice = parseFloat(inventoryItem.sellingPrice || 0);
-                const purchasePrice = parseFloat(inventoryItem.purchasePrice || 0);
+                const purchasePrice = inventoryItem.avgCost !== undefined && inventoryItem.avgCost !== null ? parseFloat(inventoryItem.avgCost) : parseFloat(inventoryItem.purchasePrice || 0);
                 const stock = parseFloat(inventoryItem.qtyOnHand || 0);
                 const qty = parseFloat(item.qty) || 0;
 
@@ -848,7 +894,7 @@ const EditSalesQuoteView = () => {
                                                                 }}
                                                                 className={cn(
                                                                     "w-full bg-transparent border-none p-0 text-sm font-bold text-right outline-none",
-                                                                    (parseFloat(item.unitPrice) || 0) < (parseFloat(inventoryMap[item.item]?.purchasePrice || 0)) ||
+                                                                    (parseFloat(item.unitPrice) || 0) < (inventoryMap[item.item]?.avgCost !== undefined && inventoryMap[item.item]?.avgCost !== null ? parseFloat(inventoryMap[item.item]?.avgCost) : parseFloat(inventoryMap[item.item]?.purchasePrice || 0)) ||
                                                                         (parseFloat(item.unitPrice) || 0) < getMinSellingPrice(item.itemId, item.division, parseFloat(inventoryMap[item.item]?.sellingPrice || 0))
                                                                         ? "text-amber-600" : "text-slate-700"
                                                                 )}
@@ -858,7 +904,7 @@ const EditSalesQuoteView = () => {
                                                                 Selling Price: {getMinSellingPrice(item.itemId, item.division, parseFloat(inventoryMap[item.item]?.sellingPrice || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                             </div>
                                                         </div>
-                                                        {((parseFloat(item.unitPrice) || 0) < (parseFloat(inventoryMap[item.item]?.purchasePrice || 0)) ||
+                                                        {((parseFloat(item.unitPrice) || 0) < (inventoryMap[item.item]?.avgCost !== undefined && inventoryMap[item.item]?.avgCost !== null ? parseFloat(inventoryMap[item.item]?.avgCost) : parseFloat(inventoryMap[item.item]?.purchasePrice || 0)) ||
                                                             (parseFloat(item.unitPrice) || 0) < getMinSellingPrice(item.itemId, item.division, parseFloat(inventoryMap[item.item]?.sellingPrice || 0))) && (
 
                                                                 <div className="absolute right-0 top-1/2 -translate-y-1/2 -mr-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">

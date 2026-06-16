@@ -27,11 +27,16 @@ const QtyToDeliverView = () => {
                 
                 const itemMap = new Map();
                 deliveryNotes
-                    .filter((dn: any) => dn.customerName === custData.name && dn.status !== 'Delivered')
+                    .filter((dn: any) => 
+                        (dn.customerId === custData.id || (dn.customerName || dn.customer?.name) === custData.name) && 
+                        (dn.status || 'Pending') !== 'Delivered'
+                    )
                     .forEach((dn: any) => {
                         dn.items?.forEach((it: any) => {
-                            const current = itemMap.get(it.itemName) || 0;
-                            itemMap.set(it.itemName, current + (it.qty || 0));
+                            const itemName = it.item?.itemName || it.itemName || it.item;
+                            if (!itemName) return;
+                            const current = itemMap.get(itemName) || 0;
+                            itemMap.set(itemName, current + (it.qty || 0));
                         });
                     });
                 

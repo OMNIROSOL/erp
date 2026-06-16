@@ -29,7 +29,10 @@ const InventoryItemTransactionsView = () => {
                 
                 // Filtering logic to match the legacy behavior
                 const filtered = transData
-                    .filter((dn: any) => dn.customerName === custData.name && dn.items?.some((it: any) => it.itemName === itemName))
+                    .filter((dn: any) => 
+                        (dn.customerId === custData.id || (dn.customerName || dn.customer?.name) === custData.name) && 
+                        dn.items?.some((it: any) => (it.item?.itemName || it.itemName || it.item) === itemName)
+                    )
                     .map((dn: any) => ({
                         id: dn.id,
                         date: dn.date,
@@ -37,7 +40,7 @@ const InventoryItemTransactionsView = () => {
                         reference: dn.reference,
                         inventoryItem: itemName,
                         customer: custData.name,
-                        qtyToDeliver: dn.items.find((it: any) => it.itemName === itemName)?.qty || 0
+                        qtyToDeliver: dn.items.find((it: any) => (it.item?.itemName || it.itemName || it.item) === itemName)?.qty || 0
                     }));
 
                 let runningBalance = 0;

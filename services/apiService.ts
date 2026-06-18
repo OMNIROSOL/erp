@@ -133,6 +133,7 @@ export const apiService = {
   getSupplier: (id: string) => api.get(`/suppliers/${id}`).then(res => res.data),
   createSupplier: (data: any) => api.post('/suppliers', data).then(res => res.data),
   updateSupplier: (id: string, data: any) => api.put(`/suppliers/${id}`, data).then(res => res.data),
+  deleteSupplier: (id: string) => api.delete(`/suppliers/${id}`).then(res => res.data),
 
   // Procurement
   getPurchaseEnquiries: () => api.get('/purchase-enquiries').then(res => res.data),
@@ -227,6 +228,7 @@ export const apiService = {
   updateSupplierLeadTime: (id: string, data: any) => api.put(`/procurement/suppliers/${id}/lead-time`, data).then(res => res.data),
   saveOrderCostsAndPayments: (id: string, data: any) => api.post(`/procurement/purchase-orders/${id}/costs-and-payments`, data).then(res => res.data),
   getProcurementCostingReport: () => api.get('/procurement/costing-report').then(res => res.data),
+  saveLandedCosts: (items: any[]) => api.post('/procurement/save-landed-costs', { items }).then(res => res.data),
   getHistoricalPrices: (itemId: string) => api.get(`/procurement/historical-prices/${itemId}`).then(res => res.data),
   getProcurementShipments: () => api.get('/procurement/shipments').then(res => res.data),
   uploadItemAttachment: (itemId: string, data: any) => api.post('/procurement/attachments', { itemId, ...data }).then(res => res.data),

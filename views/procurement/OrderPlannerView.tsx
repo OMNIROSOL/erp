@@ -191,7 +191,7 @@ const OrderPlannerView = () => {
         items: poItems
       };
 
-      const result = await apiService.createOrder(payload);
+      const result = await apiService.createPurchaseOrder(payload);
       alert(`Purchase Order ${nextRef} generated successfully!`);
       navigate(`/purchase-orders/view/${result.id}`);
     } catch (err: any) {
@@ -373,9 +373,9 @@ const OrderPlannerView = () => {
                   <tr className="bg-slate-50/50 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 sticky top-0 bg-white">
                     <th className="px-4 py-3 text-center">Select</th>
                     <th className="px-4 py-3">Code / Name</th>
-                    <th className="px-4 py-3 text-center">Stock</th>
-                    <th className="px-4 py-3 text-center">Inflow (Demand)</th>
-                    <th className="px-4 py-3 text-center">Available</th>
+                    <th className="px-4 py-3 text-center">Opening Stock</th>
+                    <th className="px-4 py-3 text-center">Upcoming Stock</th>
+                    <th className="px-4 py-3 text-center">Closing Stock</th>
                     <th className="px-4 py-3 text-center">Suggested Qty</th>
                     <th className="px-4 py-3 text-center">Order Qty</th>
                     <th className="px-4 py-3">Historical Prices</th>
@@ -397,7 +397,7 @@ const OrderPlannerView = () => {
                         <div className="text-[10px] text-slate-400 font-medium truncate max-w-xs">{item.itemName}</div>
                       </td>
                       <td className="px-4 py-3 text-center font-bold text-xs text-slate-800">{item.qtyOnHand}</td>
-                      <td className="px-4 py-3 text-center text-xs text-slate-500 font-bold">{item.avgDemand} <span className="text-[9px] text-slate-400">/mo</span></td>
+                      <td className="px-4 py-3 text-center text-xs text-slate-500 font-bold">{item.incomingQty}</td>
                       <td className="px-4 py-3 text-center text-xs text-slate-600 font-bold">
                         {item.availableStock}
                       </td>

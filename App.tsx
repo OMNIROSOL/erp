@@ -95,7 +95,6 @@ import EditPurchaseOrderColumnsView from './views/EditPurchaseOrderColumnsView';
 import EditPurchaseInvoiceColumnsView from './views/EditPurchaseInvoiceColumnsView';
 import OrderPlannerView from './views/procurement/OrderPlannerView';
 import WhatToOrderReportView from './views/procurement/WhatToOrderReportView';
-import IncomingShipmentsView from './views/procurement/IncomingShipmentsView';
 import CostingReportView from './views/procurement/CostingReportView';
 import SupplierLeadTimeMasterView from './views/procurement/SupplierLeadTimeMasterView';
 
@@ -314,7 +313,6 @@ const App = () => {
           <Route path="/purchase/order-planner" element={<OrderPlannerView />} />
           <Route path="/purchase/lead-time-master" element={<SupplierLeadTimeMasterView />} />
           <Route path="/purchase/what-to-order" element={<WhatToOrderReportView />} />
-          <Route path="/purchase/incoming-shipments" element={<IncomingShipmentsView />} />
           <Route path="/purchase/costing-reports" element={<CostingReportView />} />
 
           {/* Purchase Invoices Routes */}

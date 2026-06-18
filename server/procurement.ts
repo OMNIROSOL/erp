@@ -130,7 +130,7 @@ router.get('/planning', async (req, res) => {
       }
 
       const forecastRequirement = parseFloat((avgDemand * leadTimeMonths).toFixed(2));
-      const recommendedQty = Math.max(0, parseFloat((forecastRequirement - availableStock).toFixed(2)));
+      const recommendedQty = Math.max(0, Math.round(forecastRequirement - availableStock));
 
       return {
         id: item.id,
@@ -313,4 +313,44 @@ router.get('/shipments', async (req, res) => {
   }
 });
 
+
+// 8. POST /api/procurement/save-landed-costs
+router.post('/save-landed-costs', async (req, res) => {
+  const { items } = req.body;
+  // items: array of { itemId, poLineId, receivedQty, purchaseCost, freightAllocation, customsAllocation, otherCharges, landedCost, costPerUnit }
+  try {
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'No items provided' });
+    }
+
+    // Delete existing costings for these items, then re-insert
+    const itemIds = items.map((i: any) => i.itemId).filter(Boolean);
+    if (itemIds.length > 0) {
+      await prisma.procurementCosting.deleteMany({
+        where: { itemId: { in: itemIds } }
+      });
+    }
+
+    const created = await prisma.procurementCosting.createMany({
+      data: items.map((item: any) => ({
+        itemId: item.itemId,
+        poLineId: item.poLineId || null,
+        receivedQty: Number(item.receivedQty) || 0,
+        purchaseCost: Number(item.purchaseCost) || 0,
+        freightAllocation: Number(item.freightAllocation) || 0,
+        customsAllocation: Number(item.customsAllocation) || 0,
+        otherCharges: Number(item.otherCharges) || 0,
+        landedCost: Number(item.landedCost) || 0,
+        costPerUnit: Number(item.costPerUnit) || 0,
+      }))
+    });
+
+    res.json({ success: true, count: created.count });
+  } catch (err: any) {
+    console.error('[SAVE LANDED COSTS ERROR]:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
+

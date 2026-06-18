@@ -3,7 +3,7 @@ import {
     Eye, Edit, ChevronRight, LayoutGrid, Search, Filter, Plus, UserPlus,
     Download, UserX, UserCheck, Users, Check, Copy, ChevronLeft,
     ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, Printer, HelpCircle,
-    Building2
+    Building2, Trash2
 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 
@@ -238,6 +238,20 @@ const SuppliersView = () => {
         }
     };
 
+    const handleDeleteSupplier = async (id: string, name: string) => {
+        if (!window.confirm(`Are you sure you want to delete supplier "${name}"?`)) {
+            return;
+        }
+        try {
+            await apiService.deleteSupplier(id);
+            alert(`Supplier "${name}" deleted successfully.`);
+            setRefreshTrigger(prev => prev + 1);
+        } catch (err: any) {
+            console.error('Failed to delete supplier:', err);
+            alert(err.response?.data?.error || err.message || 'Failed to delete supplier.');
+        }
+    };
+
     const toggleSelectAll = () => {
         if (selectedSupplierIds.size === currentSlice.length && currentSlice.length > 0) {
             setSelectedSupplierIds(new Set());
@@ -446,6 +460,13 @@ const SuppliersView = () => {
                                                 title="Edit Supplier"
                                             >
                                                 <Edit size={16} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteSupplier(supplier.id, supplier.name)}
+                                                className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all"
+                                                title="Delete Supplier"
+                                            >
+                                                <Trash2 size={16} />
                                             </button>
                                         </div>
                                     </td>

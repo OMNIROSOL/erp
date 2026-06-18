@@ -1536,6 +1536,29 @@ app.put('/api/suppliers/:id', async (req, res) => {
   }
 });
 
+app.delete('/api/suppliers/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const hasOrders = await prisma.purchaseOrder.findFirst({ where: { supplierId: id } });
+    const hasInvoices = await prisma.invoices.findFirst({ where: { supplier_id: id } });
+    const hasGRNs = await prisma.goodsReceivedNote.findFirst({ where: { supplierId: id } });
+    const hasEnquiries = await prisma.purchaseEnquiry.findFirst({ where: { supplierId: id } });
+
+    if (hasOrders || hasInvoices || hasGRNs || hasEnquiries) {
+      return res.status(400).json({ 
+        error: 'Cannot delete supplier because it is associated with existing purchase orders, invoices, enquiries, or goods received notes.' 
+      });
+    }
+
+    const result = await prisma.suppliers.delete({
+      where: { id }
+    });
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- RECEIPTS ---
 app.get('/api/receipts', async (req, res) => {
   try {
@@ -2673,6 +2696,39 @@ app.post('/api/purchase-invoices', async (req, res) => {
       include: { items: true }
     });
     console.log(`[PI POST] Success. Created ID: ${result.id}, Items: ${result.items?.length}`);
+
+    // Populate procurement price history automatically for each item in the purchase invoice
+    if (result.items && result.items.length > 0) {
+      try {
+        const pDate = result.created_at || new Date();
+        const supplier = await prisma.suppliers.findUnique({
+          where: { id: supplierId }
+        });
+        const currency = supplier?.currency || 'USD';
+
+        await Promise.all(
+          result.items.map((i: any) => {
+            if (i.itemId) {
+              return prisma.procurementPriceHistory.create({
+                data: {
+                  itemId: i.itemId,
+                  supplierId,
+                  purchaseDate: pDate,
+                  qty: i.qty,
+                  unitCost: i.unitPrice,
+                  currency
+                }
+              });
+            }
+            return Promise.resolve();
+          })
+        );
+        console.log(`[PI POST] Successfully populated procurement price history for ${result.items.length} items`);
+      } catch (historyErr) {
+        console.error('Failed to populate procurement price history on PI creation:', historyErr);
+      }
+    }
+
     res.json(result);
   } catch (err: any) {
     console.error('[PURCHASE INVOICE CREATE ERROR]:', err);

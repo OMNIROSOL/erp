@@ -89,7 +89,7 @@ const WhatToOrderReportView = () => {
         items: poItems
       };
 
-      const result = await apiService.createOrder(payload);
+      const result = await apiService.createPurchaseOrder(payload);
       alert(`Purchase Order ${nextRef} created successfully!`);
       navigate(`/purchase-orders/view/${result.id}`);
     } catch (err: any) {

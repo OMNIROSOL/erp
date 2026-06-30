@@ -19,6 +19,25 @@ const InventoryItemsView = () => {
   const [sortConfig, setSortConfig] = useState<{ key: keyof InventoryItem | null, direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
   const [showEditColumns, setShowEditColumns] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>({ role: 'Admin' }); 
+
+  const [selectedItemForLocation, setSelectedItemForLocation] = useState<InventoryItem | null>(null);
+  const [locationData, setLocationData] = useState<any[]>([]);
+  const [isLoadingLocations, setIsLoadingLocations] = useState(false);
+
+  const handleQtyClick = async (item: InventoryItem) => {
+    setSelectedItemForLocation(item);
+    setIsLoadingLocations(true);
+    try {
+      const response = await fetch(`/api/items/${item.id}/locations`);
+      const data = await response.json();
+      setLocationData(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to fetch location data:', err);
+      setLocationData([]);
+    } finally {
+      setIsLoadingLocations(false);
+    }
+  };
   const [perms, setPerms] = useState<ScreenPermission | null>(null);
 
   useEffect(() => {
@@ -268,8 +287,15 @@ const InventoryItemsView = () => {
                               <Package size={14} className="text-gray-300" />
                             )}
                           </div>
+                        ) : col.id === 'qtyOnHand' ? (
+                          <span 
+                            className="text-[12px] font-bold text-blue-600 cursor-pointer hover:underline hover:text-blue-800"
+                            onClick={() => handleQtyClick(item)}
+                          >
+                            {val || '0'}
+                          </span>
                         ) : (
-                          <span className={`text-[12px] font-medium ${['qtyOnHand', 'avgCost', 'totalValue'].includes(col.id) ? 'text-gray-900 font-bold' : 'text-gray-600'
+                          <span className={`text-[12px] font-medium ${['avgCost', 'totalValue'].includes(col.id) ? 'text-gray-900 font-bold' : 'text-gray-600'
                             }`}>
                             {['avgCost', 'totalValue'].includes(col.id)
                               ? `ZMW ${(val || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
@@ -402,6 +428,49 @@ const InventoryItemsView = () => {
                   Done
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Location Breakdown Modal */}
+      {selectedItemForLocation && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedItemForLocation(null)}>
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 uppercase tracking-tight">Quantity Breakdown</h2>
+                  <p className="text-sm text-gray-500">{selectedItemForLocation.itemName} ({selectedItemForLocation.itemCode})</p>
+                </div>
+                <button onClick={() => setSelectedItemForLocation(null)} className="text-gray-400 hover:text-gray-600">
+                  <span className="sr-only">Close</span>
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              {isLoadingLocations ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-8 h-8 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+                </div>
+              ) : locationData.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">No stock in any location</div>
+              ) : (
+                <div className="space-y-2 mt-4">
+                  {locationData.map((loc, idx) => (
+                    <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                      <span className="font-medium text-gray-700">{loc.locationName}</span>
+                      <span className="font-bold text-blue-600 text-lg">{loc.qty}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center p-3 mt-4 border-t border-gray-200">
+                    <span className="font-bold text-gray-900 uppercase">Total</span>
+                    <span className="font-black text-gray-900 text-xl">{locationData.reduce((sum, l) => sum + l.qty, 0)}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

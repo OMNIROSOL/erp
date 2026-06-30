@@ -206,6 +206,19 @@ const NewReceiptView = () => {
         }
     }, [location.search]);
 
+    const calculations = useMemo(() => {
+        const total = items.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
+        let finalTotal = total;
+        let whtAmount = 0;
+        if (options.withholdingTax) {
+            const rate = parseFloat(withholdingTaxRate) || 0;
+            if (withholdingTaxMethod === 'Rate') whtAmount = total * (rate / 100);
+            else whtAmount = rate;
+            finalTotal -= whtAmount;
+        }
+        return { total, finalTotal, whtAmount };
+    }, [items, options, withholdingTaxRate, withholdingTaxMethod]);
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         setFileName(file ? file.name : 'No file chosen');
@@ -254,18 +267,6 @@ const NewReceiptView = () => {
         );
     }
 
-    const calculations = useMemo(() => {
-        const total = items.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
-        let finalTotal = total;
-        let whtAmount = 0;
-        if (options.withholdingTax) {
-            const rate = parseFloat(withholdingTaxRate) || 0;
-            if (withholdingTaxMethod === 'Rate') whtAmount = total * (rate / 100);
-            else whtAmount = rate;
-            finalTotal -= whtAmount;
-        }
-        return { total, finalTotal, whtAmount };
-    }, [items, options, withholdingTaxRate, withholdingTaxMethod]);
 
     return (
         <div className="p-10 max-w-[1400px] mx-auto space-y-8 selection:bg-indigo-100 selection:text-indigo-900 font-sans animate-in fade-in duration-700">

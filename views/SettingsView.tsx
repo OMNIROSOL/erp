@@ -15,6 +15,7 @@ import {
   Package,
   Percent,
   Users,
+  Clock,
   ShieldCheck as Shield
 } from 'lucide-react';
 import Card from '../components/shared/Card';
@@ -113,6 +114,20 @@ const SettingsView = () => {
         },
       ]
     },
+    ...(isAdmin ? [{
+      title: 'Procurement Configuration',
+      items: [
+        { 
+          id: 'lead-time-master', 
+          label: 'Lead Time Master', 
+          description: 'Manage supplier delivery schedules and lead times',
+          icon: Clock, 
+          path: '/purchase/lead-time-master',
+          color: 'text-amber-600',
+          bgColor: 'bg-amber-50'
+        }
+      ]
+    }] : []),
     {
       title: 'Access Control',
       items: [

@@ -68,6 +68,8 @@ import CustomerSummaryView from './views/CustomerSummaryView';
 import NewCustomerSummaryView from './views/NewCustomerSummaryView';
 import ViewCustomerSummaryView from './views/ViewCustomerSummaryView';
 import CustomerUnpaidInvoicesView from './views/CustomerUnpaidInvoicesView';
+import InventoryItemLedgerView from './views/InventoryItemLedgerView';
+import InventoryItemAllocationsView from './views/InventoryItemAllocationsView';
 import NewCustomerUnpaidInvoicesView from './views/NewCustomerUnpaidInvoicesView';
 import ViewCustomerUnpaidInvoicesView from './views/ViewCustomerUnpaidInvoicesView';
 import CustomerTransactionsReportView from './views/CustomerTransactionsReportView';
@@ -79,6 +81,11 @@ import ViewSalesInvoiceTotalsByCustomerReportView from './views/ViewSalesInvoice
 import SalesInvoiceTotalsByItemView from './views/SalesInvoiceTotalsByItemView';
 import NewSalesInvoiceTotalsByItemReportView from './views/NewSalesInvoiceTotalsByItemReportView';
 import ViewSalesInvoiceTotalsByItemReportView from './views/ViewSalesInvoiceTotalsByItemReportView';
+
+// Payments Imports
+import PaymentsView from './views/PaymentsView';
+import NewPaymentView from './views/NewPaymentView';
+import ViewPaymentView from './views/ViewPaymentView';
 
 // Purchase Imports
 import SuppliersView from './views/SuppliersView';
@@ -93,10 +100,13 @@ import ViewPurchaseQuoteView from './views/ViewPurchaseQuoteView';
 import EditPurchaseQuoteColumnsView from './views/EditPurchaseQuoteColumnsView';
 import EditPurchaseOrderColumnsView from './views/EditPurchaseOrderColumnsView';
 import EditPurchaseInvoiceColumnsView from './views/EditPurchaseInvoiceColumnsView';
-import OrderPlannerView from './views/procurement/OrderPlannerView';
-import WhatToOrderReportView from './views/procurement/WhatToOrderReportView';
 import CostingReportView from './views/procurement/CostingReportView';
 import SupplierLeadTimeMasterView from './views/procurement/SupplierLeadTimeMasterView';
+import ConsumptionDashboardView from './views/procurement/ConsumptionDashboardView';
+import ProcurementAnalyticsView from './views/procurement/ProcurementAnalyticsView';
+import EnquiryQuotesComparisonView from './views/procurement/EnquiryQuotesComparisonView';
+import IncomingShipmentsView from './views/procurement/IncomingShipmentsView';
+import PurchasePlanningView from './views/procurement/PurchasePlanningView';
 
 // Inventory Imports
 import InventoryItemsView from './views/InventoryItemsView';
@@ -129,6 +139,9 @@ import SettingsCurrenciesView from './views/SettingsCurrenciesView';
 
 
 
+import LoginView from './views/LoginView';
+import { Navigate } from 'react-router-dom';
+
 // Not Found Component
 const NotFound = () => (
   <div className="h-full flex items-center justify-center">
@@ -140,14 +153,25 @@ const NotFound = () => (
   </div>
 );
 
+const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+};
+
 
 const App = () => {
 
   return (
     <Router>
       <Routes>
+        {/* Public Route */}
+        <Route path="/login" element={<LoginView />} />
+
         {/* Main Layout Route with Nested Routes */}
-        <Route element={<Layout />}>
+        <Route element={<PrivateRoute><Layout /></PrivateRoute>}>
           {/* Dashboard Routes */}
           <Route path="/" element={<SalesDashboard />} />
           <Route path="/sales-dashboard" element={<SalesDashboard />} />
@@ -203,6 +227,8 @@ const App = () => {
           <Route path="/inventory-items/new" element={<NewInventoryItemView />} />
           <Route path="/inventory-items/edit/:id" element={<NewInventoryItemView />} />
           <Route path="/inventory-items/view/:id" element={<ViewInventoryItemView />} />
+          <Route path="/inventory-items/transactions/:id" element={<InventoryItemLedgerView />} />
+          <Route path="/inventory-items/locations/:id" element={<InventoryItemAllocationsView />} />
 
           <Route path="/inventory-transfers" element={<InventoryTransfersView />} />
           <Route path="/inventory-transfers/new" element={<NewInventoryTransferView />} />
@@ -310,10 +336,13 @@ const App = () => {
           <Route path="/purchase-orders/edit/:id" element={<NewPurchaseOrderView />} />
           <Route path="/purchase-orders/view/:id" element={<ViewPurchaseOrderView />} />
           <Route path="/purchase-orders/edit-columns" element={<EditPurchaseOrderColumnsView />} />
-          <Route path="/purchase/order-planner" element={<OrderPlannerView />} />
           <Route path="/purchase/lead-time-master" element={<SupplierLeadTimeMasterView />} />
-          <Route path="/purchase/what-to-order" element={<WhatToOrderReportView />} />
           <Route path="/purchase/costing-reports" element={<CostingReportView />} />
+          <Route path="/purchase/consumption" element={<ConsumptionDashboardView />} />
+          <Route path="/purchase/analytics" element={<ProcurementAnalyticsView />} />
+          <Route path="/purchase/quote-analysis" element={<EnquiryQuotesComparisonView />} />
+          <Route path="/purchase/incoming-shipments" element={<IncomingShipmentsView />} />
+          <Route path="/purchase/planning" element={<PurchasePlanningView />} />
 
           {/* Purchase Invoices Routes */}
           <Route path="/purchase-invoices" element={<PurchaseInvoicesView />} />
@@ -343,6 +372,12 @@ const App = () => {
           <Route path="/receipts/new" element={<NewReceiptView />} />
           <Route path="/receipts/view/:id" element={<ViewReceiptView />} />
           <Route path="/receipts/edit/:id" element={<NewReceiptView />} />
+
+          {/* Payments Routes */}
+          <Route path="/payments" element={<PaymentsView />} />
+          <Route path="/payments/new" element={<NewPaymentView />} />
+          <Route path="/payments/view/:id" element={<ViewPaymentView />} />
+          <Route path="/payments/edit/:id" element={<NewPaymentView />} />
 
           {/* Approvals Routes */}
           <Route path="/approvals" element={<ApprovalsView />} />

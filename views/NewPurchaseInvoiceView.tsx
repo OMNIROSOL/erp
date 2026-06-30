@@ -93,6 +93,13 @@ const NewPurchaseInvoiceView = () => {
     const [items, setItems] = useState([{ id: Date.now(), item: 'Select Item', account: 'Inventory', description: '', qty: '1', unitPrice: '0', discount: '', taxCode: 'VAT 16%' }]);
     const [showOptionsArea, setShowOptionsArea] = useState(false);
     const [freightItems, setFreightItems] = useState([{ id: Date.now(), description: 'Freight / Shipping', amount: '0', taxCode: 'No tax' }]);
+    const [importCosts, setImportCosts] = useState({
+        freight: '0',
+        transport: '0',
+        handling: '0',
+        bankCharges: '0',
+        customsDuty: '0'
+    });
     const [options, setOptions] = useState({
         amountsAreTaxInclusive: false,
         columnLineNumber: true,
@@ -187,6 +194,9 @@ const NewPurchaseInvoiceView = () => {
                                 setOptions(prev => ({ ...prev, ...loadedOptions }));
                                 if (loadedOptions.freightItems && Array.isArray(loadedOptions.freightItems)) {
                                     setFreightItems(loadedOptions.freightItems);
+                                }
+                                if (loadedOptions.importCosts) {
+                                    setImportCosts(loadedOptions.importCosts);
                                 }
                             }
 
@@ -300,8 +310,31 @@ const NewPurchaseInvoiceView = () => {
             }
             subtotal += netTotal;
             totalTax += taxAmount;
-            return { taxAmount, grossTotal: netTotal + taxAmount, netTotal };
+            return { taxAmount, grossTotal: netTotal + taxAmount, netTotal, id: item.id, qty };
         });
+
+        const importCostsTotal = 
+            (parseFloat(importCosts.freight) || 0) +
+            (parseFloat(importCosts.transport) || 0) +
+            (parseFloat(importCosts.handling) || 0) +
+            (parseFloat(importCosts.bankCharges) || 0) +
+            (parseFloat(importCosts.customsDuty) || 0);
+
+        const newTotalValue = subtotal > 0 ? subtotal : 1;
+
+        const lineCalcsWithLanded = lineCalcs.map(calc => {
+            const allocationRatio = calc.netTotal / newTotalValue;
+            const allocatedCost = importCostsTotal * allocationRatio;
+            const landedTotal = calc.netTotal + allocatedCost;
+            const landedUnitCost = calc.qty > 0 ? landedTotal / calc.qty : 0;
+            return {
+                ...calc,
+                allocatedCost,
+                landedTotal,
+                landedUnitCost
+            };
+        });
+
         const freightTotal = freightItems.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
         const freightTax = freightItems.reduce((sum, item) => {
             const amt = parseFloat(item.amount) || 0;
@@ -311,8 +344,8 @@ const NewPurchaseInvoiceView = () => {
         }, 0);
 
         let grandTotal = subtotal + totalTax + freightTotal + freightTax;
-        return { lineCalcs, subtotal, totalTax: totalTax + freightTax, grandTotal, freightTotal };
-    }, [items, options, freightItems, taxCodes]);
+        return { lineCalcs: lineCalcsWithLanded, subtotal, totalTax: totalTax + freightTax, grandTotal, freightTotal, importCostsTotal };
+    }, [items, options, freightItems, taxCodes, importCosts]);
 
     const handleSave = async () => {
         if (!supplier) {
@@ -341,15 +374,18 @@ const NewPurchaseInvoiceView = () => {
             balanceDue: calculations.grandTotal,
             description: description,
             currency: currency,
-            docOptions: { ...options, freightItems },
-            items: validItems.map(i => {
+            docOptions: { ...options, freightItems, importCosts },
+            items: validItems.map((i, index) => {
                 const dbItem = dbItems.find(it => it.itemName === i.item);
+                const lc = calculations.lineCalcs[index];
                 return {
                     itemId: dbItem?.id,
                     description: i.description,
                     qty: parseFloat(i.qty),
                     unitPrice: parseFloat(i.unitPrice),
                     totalAmount: parseFloat(i.qty) * parseFloat(i.unitPrice),
+                    landedUnitCost: lc?.landedUnitCost || parseFloat(i.unitPrice),
+                    landedTotal: lc?.landedTotal || (parseFloat(i.qty) * parseFloat(i.unitPrice)),
                     taxCode: i.taxCode || 'VAT 16%',
                     discount: options.columnDiscount ? (i.discount || '') : '',
                     account: i.account || 'Inventory'
@@ -638,9 +674,28 @@ const NewPurchaseInvoiceView = () => {
                                         })}
                                     </tbody>
                                 </table>
-                                <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end pr-24">
-                                    <div className="w-full max-w-xs space-y-2">
-                                        <div className="flex justify-end items-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] gap-8">
+                                <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col lg:flex-row justify-between gap-12 pr-6">
+                                    <div className="w-full lg:w-1/2 space-y-6">
+                                        <div className="flex items-center space-x-2">
+                                            <Settings size={16} className="text-slate-400" />
+                                            <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">Import Costs (Landed Cost)</h3>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <InputField label="Freight" type="number" value={importCosts.freight} onChange={(e: any) => setImportCosts(prev => ({...prev, freight: e.target.value}))} />
+                                            <InputField label="Transport" type="number" value={importCosts.transport} onChange={(e: any) => setImportCosts(prev => ({...prev, transport: e.target.value}))} />
+                                            <InputField label="Handling" type="number" value={importCosts.handling} onChange={(e: any) => setImportCosts(prev => ({...prev, handling: e.target.value}))} />
+                                            <InputField label="Bank Charges" type="number" value={importCosts.bankCharges} onChange={(e: any) => setImportCosts(prev => ({...prev, bankCharges: e.target.value}))} />
+                                            <InputField label="Customs Duty" type="number" value={importCosts.customsDuty} onChange={(e: any) => setImportCosts(prev => ({...prev, customsDuty: e.target.value}))} />
+                                        </div>
+                                        {calculations.importCostsTotal > 0 && (
+                                            <div className="bg-indigo-50 p-4 rounded-xl text-xs font-bold text-indigo-700 flex justify-between">
+                                                <span>Total Import Costs Apportioned:</span>
+                                                <span>{calculations.importCostsTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="w-full max-w-xs space-y-2 flex flex-col justify-end">
+                                        <div className="flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] gap-8">
                                             <span>Subtotal ({currency})</span>
                                             <span className="text-slate-700 font-bold tabular-nums text-[13px] w-32 text-right">
                                                 {calculations.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}

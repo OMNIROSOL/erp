@@ -4,6 +4,10 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import cors from 'cors';
+import multer from 'multer';
+import nodemailer from 'nodemailer';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import procurementRouter from './procurement';
 
 const app = express();
@@ -27,7 +31,7 @@ pool.on('error', (err) => {
 
 const adapter = new PrismaPg(pool);
 export const prisma = new PrismaClient({ adapter });
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 
 const formatDate = (date: Date | null | undefined) => {
   if (!date) return '';
@@ -140,7 +144,248 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/api/users', (req, res) => res.json([]));
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecretfallbackkey';
+
+// --- AUTHENTICATION ---
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await prisma.profiles.findFirst({
+      where: {
+        OR: [
+          { email: email },
+          { username: email }
+        ]
+      },
+      include: { roles: true }
+    });
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // Special case for unseeded passwords (if user hasn't set one up yet)
+    if (!user.password_hash) {
+      return res.status(401).json({ error: 'Account not set up. Contact Administrator.' });
+    }
+
+    const isValid = await bcrypt.compare(password, user.password_hash);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, email: user.email, role: user.roles?.name || 'User', roleId: user.role_id },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.full_name,
+        email: user.email,
+        role: user.roles?.name || 'User',
+        roleId: user.role_id,
+        avatar: user.full_name ? user.full_name.substring(0, 2).toUpperCase() : 'U'
+      }
+    });
+  } catch (error: any) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Middleware
+const authenticateToken = (req: any, res: any, next: any) => {
+  // We'll skip token check for some public routes if necessary
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    // For now, if no token, just proceed but don't set req.user to avoid breaking the whole app instantly
+    // In a strict environment, return 401.
+    return next();
+  }
+
+  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+    if (err) return next();
+    req.user = user;
+    next();
+  });
+};
+
+app.use(authenticateToken);
+
+// --- USERS ---
+app.get('/api/users', async (req, res) => {
+  try {
+    const users = await prisma.profiles.findMany({ include: { roles: true } });
+    res.json(users);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/users', async (req: any, res: any) => {
+  try {
+    // Check if admin (if req.user is set)
+    if (req.user && req.user.role !== 'Admin') {
+      return res.status(403).json({ error: 'Only admins can create users.' });
+    }
+
+    const { email, username, full_name, role_id, password } = req.body;
+    
+    // Check email uniqueness
+    const existingEmail = await prisma.profiles.findUnique({ where: { email } });
+    if (existingEmail) {
+      return res.status(400).json({ error: 'User with this email already exists' });
+    }
+
+    // Check username uniqueness if provided
+    if (username) {
+      const existingUsername = await prisma.profiles.findUnique({ where: { username } });
+      if (existingUsername) {
+        return res.status(400).json({ error: 'User with this username already exists' });
+      }
+    }
+
+    const password_hash = await bcrypt.hash(password, 10);
+
+    const newUser = await prisma.profiles.create({
+      data: {
+        email,
+        username: username || null,
+        full_name,
+        role_id,
+        password_hash,
+        is_active: true
+      }
+    });
+    res.json(newUser);
+  } catch (err: any) {
+    console.error('Error creating user:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/users/:id', async (req: any, res: any) => {
+  try {
+    if (req.user && req.user.role !== 'Admin') {
+      return res.status(403).json({ error: 'Only admins can update users.' });
+    }
+    const { id } = req.params;
+    const { email, username, full_name, role_id, password } = req.body;
+    
+    // Check username uniqueness if changing
+    if (username) {
+      const existingUsername = await prisma.profiles.findUnique({ where: { username } });
+      if (existingUsername && existingUsername.id !== id) {
+        return res.status(400).json({ error: 'User with this username already exists' });
+      }
+    }
+
+    let updateData: any = { email, username: username || null, full_name, role_id };
+    if (password) {
+      updateData.password_hash = await bcrypt.hash(password, 10);
+    }
+
+    const updatedUser = await prisma.profiles.update({
+      where: { id },
+      data: updateData
+    });
+    res.json(updatedUser);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/users/:id', async (req: any, res: any) => {
+  try {
+    if (req.user && req.user.role !== 'Admin') {
+      return res.status(403).json({ error: 'Only admins can delete users.' });
+    }
+    const { id } = req.params;
+    await prisma.profiles.delete({ where: { id } });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- ROLES ---
+app.get('/api/roles', async (req, res) => {
+  try {
+    const rolesList = await prisma.roles.findMany({ include: { permissions: true } });
+    res.json(rolesList);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/roles', async (req: any, res: any) => {
+  try {
+    if (req.user && req.user.role !== 'Admin') {
+      return res.status(403).json({ error: 'Only admins can create roles.' });
+    }
+    const { name, description, permissions } = req.body;
+    const newRole = await prisma.roles.create({
+      data: {
+        name,
+        description,
+        permissions: {
+          create: permissions?.map((p: any) => ({
+            screen_id: p.screenId || p.screen_id,
+            can_view: p.canView || p.can_view,
+            can_add: p.canAdd || p.can_add,
+            can_edit: p.canEdit || p.can_edit,
+            can_delete: p.canDelete || p.can_delete
+          })) || []
+        }
+      },
+      include: { permissions: true }
+    });
+    res.json(newRole);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/roles/:id', async (req: any, res: any) => {
+  try {
+    if (req.user && req.user.role !== 'Admin') {
+      return res.status(403).json({ error: 'Only admins can modify roles.' });
+    }
+    const { id } = req.params;
+    const { name, description, permissions } = req.body;
+
+    // First, delete existing permissions
+    await prisma.permissions.deleteMany({ where: { role_id: id } });
+
+    // Then, update role and recreate permissions
+    const updatedRole = await prisma.roles.update({
+      where: { id },
+      data: {
+        name,
+        description,
+        permissions: {
+          create: permissions?.map((p: any) => ({
+            screen_id: p.screenId || p.screen_id,
+            can_view: p.canView || p.can_view,
+            can_add: p.canAdd || p.can_add,
+            can_edit: p.canEdit || p.can_edit,
+            can_delete: p.canDelete || p.can_delete
+          })) || []
+        }
+      },
+      include: { permissions: true }
+    });
+
+    res.json(updatedRole);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/api/test-patch-route', (req, res) => {
   res.json({ message: 'PATCH test route is reachable' });
@@ -149,7 +394,37 @@ app.get('/api/test-patch-route', (req, res) => {
 app.get('/api/ping', (req, res) => res.json({ pong: true }));
 
 // Removed duplicate purchase-invoice routes
-
+app.get('/api/items/:id/locations', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const stockByLocation = await prisma.stockLedger.groupBy({
+      by: ['locationId'],
+      where: { itemId: id },
+      _sum: { qtyChange: true },
+    });
+    
+    const locationIds = stockByLocation.map(s => s.locationId);
+    const locations = await prisma.location.findMany({
+      where: { id: { in: locationIds } }
+    });
+    
+    const locationMap = locations.reduce((acc: any, loc: any) => {
+      acc[loc.id] = loc.name;
+      return acc;
+    }, {});
+    
+    const result = stockByLocation.map(s => ({
+      locationId: s.locationId,
+      locationName: locationMap[s.locationId] || 'Unknown Location',
+      qty: Number(s._sum.qtyChange) || 0
+    }));
+    
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching item locations:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 
 app.patch('/api/delivery-notes/:id', async (req, res) => {
@@ -261,6 +536,7 @@ const generateNextReference = async (type: string, tx: any = prisma) => {
     case 'order': count = await getNextNum(tx.salesOrder, 'SO-'); prefix = 'SO'; break;
     case 'delivery': count = await getNextNum(tx.deliveryNote, 'DN-'); prefix = 'DN'; break;
     case 'receipt': count = await getNextNum(tx.receipt, 'RCP-'); prefix = 'RCP'; break;
+    case 'payment': count = await getNextNum(tx.payment, 'PAY-'); prefix = 'PAY'; break;
     case 'purchase-quote':
     case 'purchase-enquiry': count = await getNextNum(tx.purchaseEnquiry, 'PE-'); prefix = 'PE'; break;
     case 'purchase-order': count = await getNextNum(tx.purchaseOrder, 'PO-'); prefix = 'PO'; break;
@@ -2028,6 +2304,20 @@ app.put('/api/inventory-transfers/:id', async (req, res) => {
   }
 });
 
+app.get('/api/items/:id/transactions', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const transactions = await prisma.stockLedger.findMany({
+      where: { itemId: id },
+      include: { location: true },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(transactions);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/inventory-write-offs', async (req, res) => {
   try {
     const writeOffs = await prisma.inventoryWriteOff.findMany({
@@ -2358,10 +2648,26 @@ app.patch('/api/purchase-enquiries/:id', async (req, res) => {
   const { status } = req.body;
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Update Enquiry Status
+      // 1. Fetch current items to calculate total amount
+      const currentEnquiry = await tx.purchaseEnquiry.findUnique({
+        where: { id },
+        include: { items: true }
+      });
+      
+      console.log(`[DEBUG PATCH ENQUIRY] items for id ${id}:`, currentEnquiry?.items);
+      
+      const calculatedAmount = currentEnquiry?.items.reduce((sum, item) => {
+        const itemTotal = Number(item.totalAmount || 0);
+        if (itemTotal > 0) return sum + itemTotal;
+        return sum + (Number(item.qty || 0) * Number(item.unitPrice || 0));
+      }, 0) || 0;
+
+      console.log(`[DEBUG PATCH ENQUIRY] calculatedAmount: ${calculatedAmount}`);
+
+      // 2. Update Enquiry Status and Amount
       const enquiry = await tx.purchaseEnquiry.update({
         where: { id },
-        data: { status },
+        data: { status, amount: calculatedAmount },
         include: { items: true }
       });
 
@@ -2390,7 +2696,7 @@ app.patch('/api/purchase-enquiries/:id', async (req, res) => {
               supplierId: enquiry.supplierId,
               description: `Updated from Enquiry ${enquiry.reference}. ${enquiry.description || ''}`,
               currency: enquiry.currency,
-              amount: enquiry.amount,
+              amount: calculatedAmount,
               docOptions: enquiry.docOptions || {},
               items: {
                 create: enquiry.items.map(item => ({
@@ -2398,7 +2704,7 @@ app.patch('/api/purchase-enquiries/:id', async (req, res) => {
                   description: item.description,
                   qty: item.qty,
                   unitPrice: item.unitPrice,
-                  totalAmount: item.totalAmount,
+                  totalAmount: Number(item.totalAmount) > 0 ? item.totalAmount : (Number(item.qty || 0) * Number(item.unitPrice || 0)),
                   division: item.division,
                   taxCode: item.taxCode,
                   discount: item.discount
@@ -2418,7 +2724,7 @@ app.patch('/api/purchase-enquiries/:id', async (req, res) => {
               supplierId: enquiry.supplierId,
               description: `Generated from Enquiry ${enquiry.reference}. ${enquiry.description || ''}`,
               currency: enquiry.currency,
-              amount: enquiry.amount,
+              amount: calculatedAmount,
               status: 'Open',
               sourceEnquiryId: id,
               docOptions: enquiry.docOptions || {},
@@ -2428,7 +2734,7 @@ app.patch('/api/purchase-enquiries/:id', async (req, res) => {
                   description: item.description,
                   qty: item.qty,
                   unitPrice: item.unitPrice,
-                  totalAmount: item.totalAmount,
+                  totalAmount: Number(item.totalAmount) > 0 ? item.totalAmount : (Number(item.qty || 0) * Number(item.unitPrice || 0)),
                   division: item.division,
                   taxCode: item.taxCode,
                   discount: item.discount
@@ -2445,6 +2751,34 @@ app.patch('/api/purchase-enquiries/:id', async (req, res) => {
     res.json(result);
   } catch (err: any) {
     console.error('PATCH PURCHASE ENQUIRY ERROR:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/purchase-enquiries/:id/quotes', async (req, res) => {
+  const { id } = req.params;
+  const { items } = req.body;
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      for (const item of items) {
+        if (item.id) {
+          await tx.purchaseEnquiryItem.update({
+            where: { id: item.id },
+            data: { 
+              unitPrice: item.unitPrice,
+              totalAmount: item.totalAmount
+            }
+          });
+        }
+      }
+      return tx.purchaseEnquiry.findUnique({
+        where: { id },
+        include: { items: { include: { item: true } }, supplier: true }
+      });
+    });
+    res.json(result);
+  } catch (err: any) {
+    console.error('PATCH PURCHASE ENQUIRY QUOTES ERROR:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2810,6 +3144,18 @@ app.post('/api/purchase-orders', async (req, res) => {
         }
       }
     });
+
+    // Automatically create a tracking record for the shipment board
+    await prisma.procurementShipment.create({
+      data: {
+        purchaseOrderId: result.id,
+        eta: orderDate ? parseDate(orderDate) : new Date(),
+        status: 'Ordered',
+        shipmentValue: Number(amount) || 0,
+        delayedDays: 0
+      }
+    });
+
     res.json(result);
   } catch (err: any) {
     console.error('[PURCHASE ORDER CREATE ERROR]:', err);
@@ -3009,6 +3355,17 @@ app.post('/api/goods-received-notes', async (req, res) => {
         }
       }
 
+      if (purchaseOrderId) {
+        await tx.procurementShipment.updateMany({
+          where: { purchaseOrderId },
+          data: { status: 'Received' }
+        });
+        await tx.purchaseOrder.update({
+          where: { id: purchaseOrderId },
+          data: { status: 'Received' }
+        });
+      }
+
       return grn;
     });
 
@@ -3067,6 +3424,17 @@ app.put('/api/goods-received-notes/:id', async (req, res) => {
           if (item.itemId) {
             await adjustItemInventory(item.itemId, Number(item.qty), 'GRN', updatedGrn.id, inventoryLocation, tx);
           }
+        }
+
+        if (purchaseOrderId) {
+          await tx.procurementShipment.updateMany({
+            where: { purchaseOrderId },
+            data: { status: 'Received' }
+          });
+          await tx.purchaseOrder.update({
+            where: { id: purchaseOrderId },
+            data: { status: 'Received' }
+          });
         }
 
         return updatedGrn;
@@ -3169,6 +3537,115 @@ app.put('/api/footers/:id', async (req, res) => {
 app.delete('/api/footers/:id', async (req, res) => {
   try {
     await prisma.footer.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Email setup
+const upload = multer({ storage: multer.memoryStorage() });
+
+app.post('/api/send-email', upload.single('attachment'), async (req, res) => {
+  const { to, cc, bcc, subject, body } = req.body;
+  const attachment = req.file;
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: Number(process.env.SMTP_PORT) === 465,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+
+    // Check if credentials are set
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      console.warn('[EMAIL] Real SMTP credentials not configured in .env. Simulating email send.');
+      return res.json({ success: true, simulated: true, message: 'Email sent (Simulated - Configure SMTP in .env)' });
+    }
+
+    const mailOptions: any = {
+      from: `"OMNIROSOL ERP" <${process.env.SMTP_USER}>`,
+      to,
+      cc,
+      bcc,
+      subject,
+      text: body,
+    };
+
+    if (attachment) {
+      mailOptions.attachments = [
+        {
+          filename: attachment.originalname || 'Document.pdf',
+          content: attachment.buffer,
+        }
+      ];
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('[EMAIL] Message sent: %s', info.messageId);
+    
+    res.json({ success: true, messageId: info.messageId });
+  } catch (err: any) {
+    console.error('[EMAIL ERROR]', err);
+    res.status(500).json({ error: 'Failed to send email: ' + err.message });
+  }
+});
+// --- PAYMENTS ---
+app.get('/api/payments', async (req, res) => {
+  try {
+    const payments = await prisma.payment.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(payments);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/payments/:id', async (req, res) => {
+  try {
+    const payment = await prisma.payment.findUnique({
+      where: { id: req.params.id }
+    });
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    res.json(payment);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/payments', async (req, res) => {
+  try {
+    const data = req.body;
+    const newPayment = await prisma.payment.create({ data });
+    res.json(newPayment);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/payments/:id', async (req, res) => {
+  try {
+    const data = req.body;
+    const updatedPayment = await prisma.payment.update({
+      where: { id: req.params.id },
+      data
+    });
+    res.json(updatedPayment);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/payments/:id', async (req, res) => {
+  try {
+    await prisma.payment.delete({
+      where: { id: req.params.id }
+    });
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

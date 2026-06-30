@@ -34,6 +34,10 @@ const PurchaseQuotesView = () => {
     });
     const [perms, setPerms] = useState<ScreenPermission | null>(null);
 
+    const [viewMode, setViewMode] = useState<'list' | 'quotes'>('quotes');
+    const [quoteInputs, setQuoteInputs] = useState<Record<string, number>>({});
+    const [savingQuotes, setSavingQuotes] = useState<Record<string, boolean>>({});
+
     const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
         const defaultVisible: Record<string, boolean> = {
             'Actions': true,
@@ -125,6 +129,30 @@ const PurchaseQuotesView = () => {
         ];
         localStorage.setItem('purchase_quote_column_settings', JSON.stringify(columnsToSave));
         window.dispatchEvent(new Event('storage'));
+    };
+
+    const handleSaveQuotes = async (enquiry: any) => {
+        setSavingQuotes(prev => ({ ...prev, [enquiry.id]: true }));
+        try {
+            const itemsToUpdate = (enquiry.items || []).map((i: any) => ({
+                id: i.id,
+                unitPrice: quoteInputs[i.id] ?? Number(i.unitPrice || 0),
+                qty: Number(i.qty || 0),
+                totalAmount: (quoteInputs[i.id] ?? Number(i.unitPrice || 0)) * Number(i.qty || 0)
+            }));
+            await apiService.updateEnquiryQuotes(enquiry.id, itemsToUpdate);
+            // Re-fetch to show updated data
+            setRefreshTrigger(prev => prev + 1);
+        } catch (err) {
+            console.error(err);
+            alert('Failed to save quotes');
+        } finally {
+            setSavingQuotes(prev => ({ ...prev, [enquiry.id]: false }));
+        }
+    };
+
+    const handlePriceChange = (itemId: string, val: string) => {
+        setQuoteInputs(prev => ({ ...prev, [itemId]: Number(val) }));
     };
 
     const [purchaseQuotes, setPurchaseQuotes] = useState<any[]>([]);
@@ -325,7 +353,7 @@ const PurchaseQuotesView = () => {
             header: <div className="flex items-center cursor-pointer group hover:text-indigo-600 transition-colors" onClick={() => handleSort('Supplier')}>Supplier <SortIcon column="Supplier" /></div>,
             className: 'min-w-[160px]',
             accessor: (o: any) => (
-                <span className="font-medium text-slate-600">{o.supplier || 'Unknown'}</span>
+                <span className="font-medium text-slate-600">{typeof o.supplier === 'string' ? o.supplier : o.supplier?.name || 'Unknown'}</span>
             )
         },
         {
@@ -407,11 +435,27 @@ const PurchaseQuotesView = () => {
                     <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Purchase Enquiry</h1>
                     <p className="text-gray-500 text-sm font-medium">Manage and track supplier enquiries</p>
                 </div>
-                {perms?.add !== false && (
-                    <button onClick={() => navigate('/purchase-quotes/new')} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-[12px] font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-500/20 flex items-center uppercase tracking-widest">
-                        <Plus size={16} className="mr-2" /> CREATE ENQUIRY
-                    </button>
-                )}
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center bg-slate-100 p-1 rounded-xl">
+                        <button 
+                            onClick={() => setViewMode('quotes')}
+                            className={cn("px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all", viewMode === 'quotes' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700")}
+                        >
+                            Quotes Entry
+                        </button>
+                        <button 
+                            onClick={() => setViewMode('list')}
+                            className={cn("px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all", viewMode === 'list' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700")}
+                        >
+                            List View
+                        </button>
+                    </div>
+                    {perms?.add !== false && (
+                        <button onClick={() => navigate('/purchase-quotes/new')} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-[12px] font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-500/20 flex items-center uppercase tracking-widest">
+                            <Plus size={16} className="mr-2" /> CREATE ENQUIRY
+                        </button>
+                    )}
+                </div>
             </div>
 
             <div className="flex flex-col md:flex-row items-center justify-between gap-6">
@@ -462,25 +506,90 @@ const PurchaseQuotesView = () => {
                 </div>
             )}
 
-            <div className="w-fit min-w-full overflow-hidden mb-8 custom-scrollbar rounded-2xl border border-slate-100 shadow-sm shadow-indigo-50/50">
-                <DataTable
-                    data={isLoading ? [] : paginatedData}
-                    columns={columns as any}
-                    tableClassName="min-w-[1100px]"
-                    className="border-none shadow-none bg-transparent"
-                    hideDefaultPagination={true}
-                    stickyHeader={true}
-                    disableInternalScroll={false}
-                    emptyState={
-                        isLoading ? (
-                            <div className="flex flex-col items-center justify-center py-20 space-y-4">
-                                <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-600 rounded-full animate-spin"></div>
-                                <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Fetching purchase enquiries...</p>
+            {viewMode === 'list' ? (
+                <div className="w-fit min-w-full overflow-hidden mb-8 custom-scrollbar rounded-2xl border border-slate-100 shadow-sm shadow-indigo-50/50">
+                    <DataTable
+                        data={isLoading ? [] : paginatedData}
+                        columns={columns as any}
+                        tableClassName="min-w-[1100px]"
+                        className="border-none shadow-none bg-transparent"
+                        hideDefaultPagination={true}
+                        stickyHeader={true}
+                        disableInternalScroll={false}
+                        emptyMessage={
+                            isLoading ? (
+                                <div className="flex flex-col items-center justify-center py-20 space-y-4">
+                                    <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-600 rounded-full animate-spin"></div>
+                                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Fetching purchase enquiries...</p>
+                                </div>
+                            ) : undefined
+                        }
+                    />
+                </div>
+            ) : (
+                <div className="space-y-6">
+                    {paginatedData.map(enquiry => (
+                        <div key={enquiry.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                                <div>
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mb-1">{enquiry.reference}</div>
+                                    <h3 className="font-bold text-slate-800">{enquiry.supplier}</h3>
+                                    <p className="text-xs text-slate-500 mt-1">{enquiry.issueDate}</p>
+                                </div>
+                                <button 
+                                    onClick={() => handleSaveQuotes(enquiry)}
+                                    disabled={savingQuotes[enquiry.id]}
+                                    className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-[10px] uppercase tracking-widest font-black shadow-md shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                                >
+                                    {savingQuotes[enquiry.id] ? 'Saving...' : 'Save Quotes'}
+                                </button>
                             </div>
-                        ) : undefined
-                    }
-                />
-            </div>
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="text-[9px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 border-y border-slate-100">
+                                        <th className="px-4 py-2">Item Name</th>
+                                        <th className="px-4 py-2 text-center">Qty</th>
+                                        <th className="px-4 py-2 w-48 text-right">Quoted Unit Price ({enquiry.currency || 'ZMW'})</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                    {(enquiry.items || []).map((item: any) => (
+                                        <tr key={item.id} className="hover:bg-slate-50/50">
+                                            <td className="px-4 py-3 text-xs font-bold text-slate-700">
+                                                {item.item?.itemName || item.description || 'Unknown Item'}
+                                            </td>
+                                            <td className="px-4 py-3 text-xs font-bold text-slate-600 text-center">
+                                                {Number(item.qty).toString()} {item.unit}
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <input 
+                                                    type="number"
+                                                    className="w-32 px-3 py-1.5 border border-slate-200 rounded-lg text-right text-xs font-black text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                    placeholder={Number(item.unitPrice).toString()}
+                                                    value={quoteInputs[item.id] !== undefined ? quoteInputs[item.id] : (Number(item.unitPrice) || '')}
+                                                    onChange={(e) => handlePriceChange(item.id, e.target.value)}
+                                                />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {(!enquiry.items || enquiry.items.length === 0) && (
+                                        <tr>
+                                            <td colSpan={3} className="px-4 py-4 text-center text-[10px] uppercase font-bold tracking-widest text-slate-400">
+                                                No items in this enquiry
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    ))}
+                    {paginatedData.length === 0 && !isLoading && (
+                        <div className="text-center py-12 text-slate-400 font-bold uppercase tracking-widest text-[10px]">
+                            No enquiries found.
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className="flex flex-col md:flex-row items-center justify-between bg-white px-8 py-6 rounded-[32px] border border-slate-100 shadow-sm gap-8 mt-8">
                 <div className="flex flex-col items-start gap-1">

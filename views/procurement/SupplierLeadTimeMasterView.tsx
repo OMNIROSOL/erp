@@ -34,13 +34,13 @@ const SupplierLeadTimeMasterView = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const res = await apiService.getPlanningData();
-      setSuppliers(res.suppliers || []);
-      if (res.suppliers?.length > 0) {
-        setSelectedSupplierId(res.suppliers[0].id);
+      const allSuppliers = await apiService.getSuppliers();
+      setSuppliers(allSuppliers || []);
+      if (allSuppliers?.length > 0) {
+        setSelectedSupplierId(allSuppliers[0].id);
       }
     } catch (err) {
-      console.error('Failed to load supplier planning data:', err);
+      console.error('Failed to load suppliers:', err);
     } finally {
       setLoading(false);
     }

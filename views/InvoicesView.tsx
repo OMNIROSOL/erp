@@ -469,7 +469,7 @@ const InvoicesView = () => {
             header: <div className="flex items-center cursor-pointer group hover:text-blue-600 transition-colors" onClick={() => handleSort('Customer')}>Customer <SortIcon column="Customer" /></div>,
             className: 'min-w-[200px]',
             accessor: (inv: any) => (
-                <span className="font-medium text-slate-600">{inv.customer || 'Unknown'}</span>
+                <span className="font-medium text-slate-600">{typeof inv.customer === 'string' ? inv.customer : inv.customer?.name || 'Unknown'}</span>
             ),
             sortable: false
         },

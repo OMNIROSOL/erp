@@ -264,7 +264,7 @@ const PurchaseOrdersView = () => {
         {
             id: 'Supplier',
             header: 'Supplier',
-            accessor: (o: any) => <span className="font-medium text-slate-600 truncate max-w-[150px]" title={o.supplier}>{o.supplier}</span>
+            accessor: (o: any) => <span className="font-medium text-slate-600 truncate max-w-[150px]" title={typeof o.supplier === 'string' ? o.supplier : o.supplier?.name}>{typeof o.supplier === 'string' ? o.supplier : o.supplier?.name || 'Unknown'}</span>
         },
         {
             id: 'Qty on Order',

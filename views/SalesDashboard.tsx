@@ -207,25 +207,23 @@ const SalesDashboard: React.FC = () => {
   }, [filteredInvoices]);
 
   const metrics = useMemo(() => {
-    const dailyTotal = dbInvoices
-        .filter(inv => (inv.createdAt || inv.issueDate || inv.date)?.startsWith(todayStr))
-        .reduce((s, i) => s + (parseFloat(i.grandTotal || i.invoiceAmount || i.amount) || 0), 0);
-    const totalRev = filteredInvoices.reduce((s, i) => s + (parseFloat(i.grandTotal || i.invoiceAmount || i.amount) || 0), 0);
+    const totalSales = filteredOrders.reduce((s, o) => s + (parseFloat(o.amount || o.totalAmount || 0) || 0), 0);
+    const totalRev = filteredInvoices.reduce((s, i) => s + (parseFloat(i.grandTotal || i.invoiceAmount || i.amount || 0) || 0), 0);
     return {
-      totalSalesToday: dailyTotal,
+      totalSales: totalSales,
       totalRevenue: totalRev,
-      pendingQuotes: dbQuotes.filter(q => q.status === 'Active' || q.status === 'Pending Approval').length,
-      confirmedOrders: dbOrders.filter(o => o.status === 'Ordered' || o.status === 'Invoiced' || o.status === 'Processed' || o.status === 'Completed').length,
+      pendingQuotes: filteredQuotes.filter(q => q.status === 'Active' || q.status === 'Pending Approval').length,
+      confirmedOrders: filteredOrders.filter(o => o.status === 'Ordered' || o.status === 'Invoiced' || o.status === 'Processed' || o.status === 'Completed').length,
       totalQuotation: filteredQuotes.length,
       totalOrder: filteredOrders.length,
       totalInvoice: filteredInvoices.length,
       totalDelivery: filteredDeliveries.length
     };
-  }, [dbInvoices, dbQuotes, dbOrders, filteredInvoices, filteredOrders, filteredQuotes, filteredDeliveries]);
+  }, [filteredInvoices, filteredOrders, filteredQuotes, filteredDeliveries]);
 
   const kpis = [
-      { label: 'TOTAL SALES', val: `$${metrics.totalSalesToday.toLocaleString()}`, dot: 'bg-blue-600', badge: '+12%', badgeColor: 'text-green-600 bg-green-50' },
-      { label: 'TOTAL REVENUE', val: `$${metrics.totalRevenue.toLocaleString()}`, dot: 'bg-green-600', badge: '+8%', badgeColor: 'text-green-600 bg-green-50' },
+      { label: 'TOTAL SALES', val: `$${metrics.totalSales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, dot: 'bg-blue-600', badge: '+12%', badgeColor: 'text-green-600 bg-green-50' },
+      { label: 'TOTAL REVENUE', val: `$${metrics.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, dot: 'bg-green-600', badge: '+8%', badgeColor: 'text-green-600 bg-green-50' },
       { label: 'PENDING QUOTES', val: metrics.pendingQuotes, dot: 'bg-orange-600', badge: '-2', badgeColor: 'text-slate-600 bg-slate-50' },
       { label: 'CONFIRMED ORDERS', val: metrics.confirmedOrders, dot: 'bg-purple-600', badge: '+5', badgeColor: 'text-emerald-600 bg-emerald-50' },
       { label: 'TOTAL QUOTATION', val: metrics.totalQuotation, dot: 'bg-teal-600', badge: 'Total', badgeColor: 'text-slate-500 bg-slate-50' },
@@ -475,7 +473,7 @@ const SalesDashboard: React.FC = () => {
                       {overduePayments.map((inv, i) => (
                           <div key={i} className="p-4 rounded-2xl bg-rose-50/50 border border-rose-100 flex justify-between items-center hover:bg-rose-50 transition-colors">
                               <div className="min-w-0">
-                                  <p className="text-[11px] font-black text-slate-800 truncate mb-1 uppercase tracking-tight">{inv.customer}</p>
+                                  <p className="text-[11px] font-black text-slate-800 truncate mb-1 uppercase tracking-tight">{typeof inv.customer === 'string' ? inv.customer : inv.customer?.name || 'Unknown'}</p>
                                   <p className="text-[9px] font-black text-rose-400 uppercase tracking-widest">EXPIRED: {inv.dueDate}</p>
                               </div>
                               <span className="text-sm font-black text-slate-900 ml-4 tabular-nums">${inv.balanceDue.toLocaleString()}</span>
@@ -493,7 +491,7 @@ const SalesDashboard: React.FC = () => {
                                 <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">REF: {q.reference}</p>
                                 <span className="text-[8px] font-black px-2 py-0.5 bg-amber-100 text-amber-700 rounded-lg uppercase border border-amber-200 shadow-sm">VERIFICATION</span>
                             </div>
-                            <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tight">{q.customer}</p>
+                            <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tight">{typeof q.customer === 'string' ? q.customer : q.customer?.name || 'Unknown'}</p>
                         </div>
                     ))}
                   </div>

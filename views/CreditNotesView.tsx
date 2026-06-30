@@ -267,7 +267,7 @@ const CreditNotesView = () => {
             header: <div className="flex items-center cursor-pointer group hover:text-indigo-600 transition-colors" onClick={() => handleSort('Customer')}>Customer <SortIcon column="Customer" /></div>,
             className: 'min-w-[200px]',
             accessor: (o: any) => (
-                <span className="font-medium text-slate-600">{o.customer || 'Unknown'}</span>
+                <span className="font-medium text-slate-600">{typeof o.customer === 'string' ? o.customer : o.customer?.name || 'Unknown'}</span>
             )
         },
         {
@@ -432,13 +432,13 @@ const CreditNotesView = () => {
                     tableClassName="w-full"
                     className="border-none shadow-none bg-transparent"
                     hideDefaultPagination={true}
-                    emptyState={
+                    emptyMessage={
                         isLoading ? (
-                            <div className="flex flex-col items-center justify-center py-20 space-y-4">
-                                <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-600 rounded-full animate-spin"></div>
-                                <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Fetching credit notes...</p>
+                            <div className="flex flex-col items-center justify-center space-y-4 py-20">
+                                <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+                                <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Loading credit notes...</p>
                             </div>
-                        ) : undefined
+                        ) : "No credit notes found matching your criteria."
                     }
                     tableFooter={
                         <tr className="bg-slate-50/50">

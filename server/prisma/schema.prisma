@@ -62,6 +62,7 @@ model Item {
   procurementCostings        ProcurementCosting[]
   procurementPriceHistories  ProcurementPriceHistory[]
   procurementAttachments     ProcurementAttachment[]
+  purchasePlanItems          PurchasePlanItem[]
 
   @@map("items")
   @@schema("master")
@@ -217,6 +218,38 @@ model Receipt {
   @@schema("sales")
 }
 
+model Payment {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference         String    @unique
+  date              DateTime  @default(dbgenerated("CURRENT_DATE")) @db.Date
+  paidToContact     String    @map("paid_to_contact")
+  paidFromAccount   String    @map("paid_from_account")
+  description       String?
+  amount            Decimal   @db.Decimal(15, 2)
+  currency          String?   @default("ZMW")
+  status            String?   @default("Completed")
+  createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("payments")
+  @@schema("finance")
+}
+
+model InterAccountTransfer {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference         String    @unique
+  date              DateTime  @default(dbgenerated("CURRENT_DATE")) @db.Date
+  paidFromAccount   String    @map("paid_from_account")
+  receivedInAccount String    @map("received_in_account")
+  description       String?
+  amount            Decimal   @db.Decimal(15, 2)
+  currency          String?   @default("ZMW")
+  status            String?   @default("Completed")
+  createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("inter_account_transfers")
+  @@schema("finance")
+}
+
 model Location {
   id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name        String        @unique
@@ -331,13 +364,15 @@ model permissions {
 }
 
 model profiles {
-  id         String    @id @db.Uuid
-  email      String    @unique
-  full_name  String?
-  role_id    String?   @db.Uuid
-  is_active  Boolean?  @default(true)
-  created_at DateTime? @default(now()) @db.Timestamptz(6)
-  roles      roles?    @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String    @unique
+  username      String?   @unique
+  password_hash String?
+  full_name     String?
+  role_id       String?   @db.Uuid
+  is_active     Boolean?  @default(true)
+  created_at    DateTime? @default(now()) @db.Timestamptz(6)
+  roles         roles?    @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("admin")
 }
@@ -381,6 +416,7 @@ model suppliers {
   leadTimeExtra              Int?                        @default(0) @map("lead_time_extra")
   procurementRecommendations ProcurementRecommendation[]
   procurementPriceHistories  ProcurementPriceHistory[]
+  purchasePlanItems          PurchasePlanItem[]
 
   @@schema("master")
 }
@@ -687,5 +723,78 @@ model ProcurementAttachment {
   item       Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@map("procurement_attachments")
+  @@schema("purchase")
+}
+
+model PurchasePlan {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference     String             @unique
+  month         Int
+  year          Int
+  status        String             @default("Draft") // Draft, Pending Approval, Approved, Rejected
+  createdAt     DateTime?          @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy     String?            @map("created_by")
+  items         PurchasePlanItem[]
+  approvals     ApprovalWorkflow[]
+  auditLogs     AuditHistory[]
+
+  @@map("purchase_plans")
+  @@schema("purchase")
+}
+
+model PurchasePlanItem {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  planId             String       @map("plan_id") @db.Uuid
+  itemId             String       @map("item_id") @db.Uuid
+  supplierId         String?      @map("supplier_id") @db.Uuid
+  availableStock     Decimal      @map("available_stock") @db.Decimal(12, 4)
+  avgConsumption     Decimal      @map("avg_consumption") @db.Decimal(12, 4)
+  safetyStock        Decimal      @map("safety_stock") @db.Decimal(12, 4)
+  incomingPos        Decimal      @map("incoming_pos") @db.Decimal(12, 4)
+  projectedDemand    Decimal      @map("projected_demand") @db.Decimal(12, 4)
+  suggestedQty       Decimal      @map("suggested_qty") @db.Decimal(12, 4)
+  finalOrderQty      Decimal      @map("final_order_qty") @db.Decimal(12, 4)
+  remarks            String?
+  aiRecommendation   String?      @map("ai_recommendation")
+  createdAt          DateTime?    @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  plan               PurchasePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  item               Item         @relation(fields: [itemId], references: [id], onDelete: NoAction)
+  supplier           suppliers?   @relation(fields: [supplierId], references: [id], onDelete: NoAction)
+
+  @@map("purchase_plan_items")
+  @@schema("purchase")
+}
+
+model ApprovalWorkflow {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  planId         String       @map("plan_id") @db.Uuid
+  level          Int          // 1 for Level 1, 2 for Level 2
+  roleRequired   String       @map("role_required") // e.g., 'Procurement Manager'
+  status         String       @default("Pending") // Pending, Approved, Rejected
+  approverId     String?      @map("approver_id")
+  approverName   String?      @map("approver_name")
+  comments       String?
+  actionDate     DateTime?    @map("action_date") @db.Timestamptz(6)
+  createdAt      DateTime?    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  plan           PurchasePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@map("approval_workflows")
+  @@schema("purchase")
+}
+
+model AuditHistory {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  planId         String       @map("plan_id") @db.Uuid
+  userId         String       @map("user_id")
+  userName       String       @map("user_name")
+  action         String       // e.g., 'Adjusted final order qty', 'Submitted for approval'
+  details        String?      // e.g., 'Item XYZ changed from 10 to 15'
+  createdAt      DateTime?    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  plan           PurchasePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@map("audit_history")
   @@schema("purchase")
 }

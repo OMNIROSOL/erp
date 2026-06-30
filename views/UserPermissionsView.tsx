@@ -3,13 +3,13 @@ import {
   Users, 
   Shield, 
   UserCircle, 
-  LogIn, 
   CheckCircle2, 
   AlertCircle,
   ShieldCheck,
-  ShieldAlert,
   UserPlus,
-  ArrowRight
+  Edit2,
+  Trash2,
+  LogIn
 } from 'lucide-react';
 import { AppUser, UserRole } from '../types';
 import apiService from '../services/apiService';
@@ -22,9 +22,13 @@ const UserPermissionsView: React.FC = () => {
   const [showToast, setShowToast] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const [showNewUserModal, setShowNewUserModal] = useState(false);
-  const [newUser, setNewUser] = useState<Partial<AppUser>>({
+  const [showEditUserModal, setShowEditUserModal] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [newUser, setNewUser] = useState<Partial<AppUser> & { password?: string; username?: string }>({
     name: '',
     email: '',
+    username: '',
+    password: '',
     role: 'Staff',
     roleId: 'r-staff',
     avatar: ''
@@ -72,10 +76,11 @@ const UserPermissionsView: React.FC = () => {
     const selectedRole = roles.find(r => r.id === newUser.roleId) || roles[0];
 
     const userData = {
-      name: newUser.name,
+      full_name: newUser.name,
       email: newUser.email,
+      password: newUser.password,
       role: selectedRole.name as any,
-      roleId: selectedRole.id,
+      role_id: selectedRole.id,
       avatar: newUser.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     };
 
@@ -84,13 +89,73 @@ const UserPermissionsView: React.FC = () => {
       const updatedUsers = await apiService.getUsers();
       setUsers(updatedUsers);
       setShowNewUserModal(false);
-      setNewUser({ name: '', email: '', role: 'Staff', roleId: 'r-staff', avatar: '' });
+      setNewUser({ name: '', email: '', password: '', role: 'Staff', roleId: 'r-staff', avatar: '' });
       
-      setToastMsg(`User ${userData.name} added successfully`);
+      setToastMsg(`User ${userData.full_name} added successfully`);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
     } catch (err) {
       console.error('Failed to create user:', err);
+    }
+  };
+
+  const handleEditUserClick = (user: AppUser) => {
+    setEditingUserId(user.id);
+    setNewUser({
+      name: user.name,
+      email: user.email,
+      password: '', // Leave empty to not change password
+      role: user.role,
+      roleId: user.roleId || '',
+      avatar: user.avatar
+    });
+    setShowEditUserModal(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUserId || !newUser.name || !newUser.email) return;
+
+    const selectedRole = roles.find(r => r.id === newUser.roleId) || roles[0];
+
+    const userData: any = {
+      full_name: newUser.name,
+      email: newUser.email,
+      role_id: selectedRole.id
+    };
+    
+    if (newUser.password) {
+      userData.password = newUser.password;
+    }
+
+    try {
+      await apiService.updateUser(editingUserId, userData);
+      const updatedUsers = await apiService.getUsers();
+      setUsers(updatedUsers);
+      setShowEditUserModal(false);
+      setEditingUserId(null);
+      setNewUser({ name: '', email: '', password: '', role: 'Staff', roleId: 'r-staff', avatar: '' });
+      
+      setToastMsg(`User ${userData.full_name} updated successfully`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (err) {
+      console.error('Failed to update user:', err);
+    }
+  };
+
+  const handleDeleteUser = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete user ${name}?`)) return;
+    try {
+      await apiService.deleteUser(id);
+      const updatedUsers = await apiService.getUsers();
+      setUsers(updatedUsers);
+      setToastMsg(`User ${name} deleted successfully`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (err) {
+      console.error('Failed to delete user:', err);
+      alert('Failed to delete user.');
     }
   };
 
@@ -158,7 +223,7 @@ const UserPermissionsView: React.FC = () => {
             </div>
           </div>
           <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20 flex flex-col gap-1 min-w-[200px]">
-            <span className="text-[10px] font-bold text-blue-200 uppercase tracking-widest">Simulation Mode</span>
+            <span className="text-[10px] font-bold text-blue-200 uppercase tracking-widest">Authentication</span>
             <p className="text-sm">Application currently reflects roles and permissions for <strong>{currentUser.role}</strong>.</p>
           </div>
         </div>
@@ -168,7 +233,6 @@ const UserPermissionsView: React.FC = () => {
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mt-8">
         <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
           <h2 className="font-bold text-slate-800">Available User Profiles</h2>
-          <span className="text-xs font-medium text-slate-400">SELECT A USER TO SIMULATE LOGIN</span>
         </div>
         <div className="divide-y divide-slate-100">
           {users.map((user) => (
@@ -205,13 +269,22 @@ const UserPermissionsView: React.FC = () => {
                     CURRENTLY LOGGED IN
                   </div>
                 ) : (
-                  <button 
-                    onClick={() => handleSwitchUser(user)}
-                    className="flex items-center gap-1.5 text-slate-600 font-bold text-xs bg-white border border-slate-200 px-4 py-1.5 rounded-lg hover:bg-primary hover:border-primary hover:text-white hover:shadow-lg hover:shadow-primary/20 transition-all translate-x-1 opacity-0 group-hover:opacity-100 group-hover:translate-x-0"
-                  >
-                    LOGIN AS
-                    <ArrowRight size={14} />
-                  </button>
+                  <>
+                    <button 
+                      onClick={() => handleEditUserClick(user)}
+                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Edit User"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteUser(user.id, user.name)}
+                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete User"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -261,6 +334,16 @@ const UserPermissionsView: React.FC = () => {
               </div>
 
               <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username (Optional)</label>
+                <input 
+                  type="text" 
+                  value={newUser.username || ''}
+                  onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                  placeholder="e.g. alice_admin"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-4 focus:ring-primary/5 focus:border-primary/40 focus:bg-white transition-all outline-none"
+                />
+              </div>
+              <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
                 <input 
                   required
@@ -268,6 +351,18 @@ const UserPermissionsView: React.FC = () => {
                   value={newUser.email}
                   onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                   placeholder="e.g. alice@erppro.com"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-4 focus:ring-primary/5 focus:border-primary/40 focus:bg-white transition-all outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Initial Password</label>
+                <input 
+                  required
+                  type="password" 
+                  value={newUser.password || ''}
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  placeholder="e.g. ••••••••"
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-4 focus:ring-primary/5 focus:border-primary/40 focus:bg-white transition-all outline-none"
                 />
               </div>
@@ -306,11 +401,98 @@ const UserPermissionsView: React.FC = () => {
         </div>
       )}
 
+      {/* Edit User Modal */}
+      {showEditUserModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200">
+            <div className="bg-slate-50 p-6 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">Edit User</h2>
+              <button onClick={() => setShowEditUserModal(false)} className="text-slate-400 hover:text-slate-600">
+                <AlertCircle size={24} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
+                <input 
+                  required
+                  type="text" 
+                  value={newUser.name}
+                  onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                  className="w-full bg-[#F9FAFB] border border-slate-200 focus:border-primary rounded-xl py-2 px-4 text-sm font-bold text-slate-900 focus:ring-4 focus:ring-primary/5 transition-all outline-none"
+                  placeholder="e.g. Jane Doe"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username (Optional)</label>
+                <input 
+                  type="text" 
+                  value={newUser.username || ''}
+                  onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                  className="w-full bg-[#F9FAFB] border border-slate-200 focus:border-primary rounded-xl py-2 px-4 text-sm font-bold text-slate-900 focus:ring-4 focus:ring-primary/5 transition-all outline-none"
+                  placeholder="e.g. jane_staff"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+                <input 
+                  required
+                  type="email" 
+                  value={newUser.email}
+                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                  className="w-full bg-[#F9FAFB] border border-slate-200 focus:border-primary rounded-xl py-2 px-4 text-sm font-bold text-slate-900 focus:ring-4 focus:ring-primary/5 transition-all outline-none"
+                  placeholder="jane@example.com"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Role</label>
+                <select 
+                  value={newUser.roleId || ''}
+                  onChange={(e) => setNewUser({ ...newUser, roleId: e.target.value })}
+                  className="w-full bg-[#F9FAFB] border border-slate-200 focus:border-primary rounded-xl py-2 px-4 text-sm font-bold text-slate-900 focus:ring-4 focus:ring-primary/5 transition-all outline-none appearance-none"
+                >
+                  <option value="" disabled>Select Role</option>
+                  {roles.map((r: any) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">New Password (Leave blank to keep current)</label>
+                <input 
+                  type="password" 
+                  value={newUser.password || ''}
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  className="w-full bg-[#F9FAFB] border border-slate-200 focus:border-primary rounded-xl py-2 px-4 text-sm font-bold text-slate-900 focus:ring-4 focus:ring-primary/5 transition-all outline-none"
+                  placeholder="Enter new password"
+                />
+              </div>
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setShowEditUserModal(false)}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 py-3 rounded-xl bg-primary text-white font-bold text-sm hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {showToast && (
-        <div className="fixed bottom-8 right-8 bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-4 duration-300 z-50 border border-white/10">
-          <div className="w-8 h-8 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center shadow-inner">
-            <CheckCircle2 size={18} />
+        <div className="fixed bottom-4 right-4 bg-slate-900 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-4 duration-300 z-50">
+          <div className="w-8 h-8 bg-success/20 text-success rounded-full flex items-center justify-center">
+            <CheckCircle2 size={16} />
           </div>
           <span className="font-bold text-sm">{toastMsg}</span>
         </div>

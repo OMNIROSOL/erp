@@ -1,12 +1,23 @@
 import axios from 'axios';
 
 // Dynamically determine the backend host based on the frontend's hostname
-const API_BASE_URL = `http://${window.location.hostname}:3001/api`;
+const API_BASE_URL = `http://${window.location.hostname}:3002/api`;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000, // 10 seconds timeout
 });
+
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
 api.interceptors.response.use(
   response => response,
@@ -34,6 +45,7 @@ export const apiService = {
   updateItem: (id: string, data: any) => api.put(`/items/${id}`, data).then(res => res.data),
   deleteItem: (id: string) => api.delete(`/items/${id}`).then(res => res.data),
   getItemTransactions: (id: string) => api.get(`/items/${id}/transactions`).then(res => res.data),
+  getItemAllocations: (id: string) => api.get(`/items/${id}/locations`).then(res => res.data),
 
   getDivisions: () => api.get('/divisions').then(res => res.data),
   createDivision: (data: any) => api.post('/divisions', data).then(res => res.data),
@@ -92,6 +104,12 @@ export const apiService = {
   createReceipt: (data: any) => api.post('/receipts', data).then(res => res.data),
   updateReceipt: (id: string, data: any) => api.put(`/receipts/${id}`, data).then(res => res.data),
 
+  getPayments: () => api.get('/payments').then(res => res.data),
+  getPayment: (id: string) => api.get(`/payments/${id}`).then(res => res.data),
+  createPayment: (data: any) => api.post('/payments', data).then(res => res.data),
+  updatePayment: (id: string, data: any) => api.put(`/payments/${id}`, data).then(res => res.data),
+  deletePayment: (id: string) => api.delete(`/payments/${id}`).then(res => res.data),
+
   getCreditNotes: () => api.get('/credit-notes').then(res => res.data),
   createCreditNote: (data: any) => api.post('/credit-notes', data).then(res => res.data),
 
@@ -136,6 +154,7 @@ export const apiService = {
   deleteSupplier: (id: string) => api.delete(`/suppliers/${id}`).then(res => res.data),
 
   // Procurement
+  updateEnquiryQuotes: (id: string, items: any[]) => api.patch(`/purchase-enquiries/${id}/quotes`, { items }).then(res => res.data),
   getPurchaseEnquiries: () => api.get('/purchase-enquiries').then(res => res.data),
   getPurchaseEnquiry: (id: string) => api.get(`/purchase-enquiries/${id}`).then(res => res.data),
   createPurchaseEnquiry: (data: any) => api.post('/purchase-enquiries', data).then(res => res.data),
@@ -163,7 +182,7 @@ export const apiService = {
 
   // Reference Generation
   getLocations: () => api.get('/locations').then(res => res.data),
-  getNextReference: (type: 'invoice' | 'quote' | 'order' | 'delivery' | 'customer' | 'supplier' | 'purchase-quote' | 'purchase-enquiry' | 'purchase-order' | 'receipt' | 'purchase-invoice' | 'debit-note' | 'credit-note' | 'goods-received-note' | 'inventory-transfer' | 'inventory-write-off') =>
+  getNextReference: (type: 'invoice' | 'quote' | 'order' | 'delivery' | 'customer' | 'supplier' | 'purchase-quote' | 'purchase-enquiry' | 'purchase-order' | 'receipt' | 'payment' | 'purchase-invoice' | 'debit-note' | 'credit-note' | 'goods-received-note' | 'inventory-transfer' | 'inventory-write-off') =>
     api.get(`/reference/next/${type}`).then(res => res.data.nextRef),
 
   // Accounts
@@ -176,62 +195,118 @@ export const apiService = {
   createRole: (data: any) => api.post('/roles', data).then(res => res.data),
   updateRole: (id: string, data: any) => api.put(`/roles/${id}`, data).then(res => res.data),
   getScreens: () => Promise.resolve([
+    { id: 'dashboard', name: 'Sales Dashboard' },
+    { id: 'accounts', name: 'Chart of Accounts' },
+    { id: 'bank-accounts', name: 'Bank Accounts' },
+    { id: 'units', name: 'Units of Measure' },
+    { id: 'categories', name: 'Item Categories' },
+    { id: 'receipts', name: 'Receipts' },
+    { id: 'payments', name: 'Payments' },
+    { id: 'customers', name: 'Customers' },
+    { id: 'sales-invoices', name: 'Sales Invoices' },
     { id: 'sales-quotes', name: 'Sales Quotes' },
     { id: 'sales-orders', name: 'Sales Orders' },
-    { id: 'sales-invoices', name: 'Sales Invoices' },
-    { id: 'customers', name: 'Customers' },
+    { id: 'delivery-notes', name: 'Delivery Notes' },
+    { id: 'credit-notes', name: 'Credit Notes' },
+    { id: 'purchase-history', name: 'Purchase Dashboard / History' },
+    { id: 'quote-analysis', name: 'Quote Analysis' },
     { id: 'suppliers', name: 'Suppliers' },
-    { id: 'items', name: 'Inventory Items' },
-    { id: 'inventory-transfers', name: 'Inventory Transfers' },
-    { id: 'inventory-write-offs', name: 'Inventory Write-offs' },
-    { id: 'bank-accounts', name: 'Bank Accounts' },
     { id: 'purchase-quotes', name: 'Purchase Enquiry' },
     { id: 'purchase-orders', name: 'Purchase Orders' },
     { id: 'purchase-invoices', name: 'Purchase Invoices' },
-    { id: 'receipts', name: 'Receipts' },
+    { id: 'goods-received-notes', name: 'Goods Received Notes' },
     { id: 'debit-notes', name: 'Debit Notes' },
-    { id: 'credit-notes', name: 'Credit Notes' },
-    { id: 'delivery-notes', name: 'Delivery Notes' },
+    { id: 'inventory-items', name: 'Inventory Items' },
+    { id: 'inventory-transfers', name: 'Inventory Transfers' },
+    { id: 'inventory-write-offs', name: 'Inventory Write-offs' },
+    { id: 'inventory-unit-costs', name: 'Inventory Unit Costs' },
+    { id: 'approvals', name: 'Approvals' },
     { id: 'reports', name: 'Reports' },
-    { id: 'settings', name: 'Settings' }
+    { id: 'user-permissions', name: 'Settings / Permissions' }
   ]),
 
   // Users & Session
   getUsers: () => api.get('/users').then(res => res.data),
   createUser: (data: any) => api.post('/users', data).then(res => res.data),
+  updateUser: (id: string, data: any) => api.put(`/users/${id}`, data).then(res => res.data),
+  deleteUser: (id: string) => api.delete(`/users/${id}`).then(res => res.data),
   getCurrentUser: () => {
     try {
-      const saved = localStorage.getItem('erp_sim_user');
+      const saved = localStorage.getItem('user');
       if (saved) return JSON.parse(saved);
     } catch (err) {
-      console.error('Failed to parse sim user from localStorage:', err);
+      console.error('Failed to parse user from localStorage:', err);
     }
-    return {
-      id: 'u-admin',
-      name: 'Omni Admin',
-      email: 'admin@omnirosol.com',
-      role: 'Admin',
-      roleId: 'r-admin',
-      avatar: 'OA'
-    };
+    return null;
   },
   setCurrentUser: (user: any) => {
     try {
-      localStorage.setItem('erp_sim_user', JSON.stringify(user));
+      localStorage.setItem('user', JSON.stringify(user));
       window.dispatchEvent(new Event('user_sim_updated'));
     } catch (err) {
-      console.error('Failed to save sim user to localStorage:', err);
+      console.error('Failed to save user to localStorage:', err);
     }
   },
+  logout: () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/#/login';
+  },
+  sendEmailWithAttachment: async (
+    emailData: { to: string; cc: string; bcc: string; subject: string; body: string },
+    attachmentBlob?: Blob,
+    attachmentName?: string
+  ) => {
+    const formData = new FormData();
+    formData.append('to', emailData.to);
+    formData.append('cc', emailData.cc);
+    formData.append('bcc', emailData.bcc);
+    formData.append('subject', emailData.subject);
+    formData.append('body', emailData.body);
+
+    if (attachmentBlob && attachmentName) {
+      formData.append('attachment', attachmentBlob, attachmentName);
+    }
+
+    const response = await fetch(`${API_BASE_URL}/send-email`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to send email');
+    }
+    return response.json();
+  },
   // Procurement
-  getPlanningData: () => api.get('/procurement/planning').then(res => res.data),
+  getPlanningData: (months?: number) => api.get(`/procurement/planning${months ? `?months=${months}` : ''}`).then(res => res.data),
   updateSupplierLeadTime: (id: string, data: any) => api.put(`/procurement/suppliers/${id}/lead-time`, data).then(res => res.data),
   saveOrderCostsAndPayments: (id: string, data: any) => api.post(`/procurement/purchase-orders/${id}/costs-and-payments`, data).then(res => res.data),
   getProcurementCostingReport: () => api.get('/procurement/costing-report').then(res => res.data),
   saveLandedCosts: (items: any[]) => api.post('/procurement/save-landed-costs', { items }).then(res => res.data),
   getHistoricalPrices: (itemId: string) => api.get(`/procurement/historical-prices/${itemId}`).then(res => res.data),
   getProcurementShipments: () => api.get('/procurement/shipments').then(res => res.data),
+  getQuoteAnalysis: () => api.get('/procurement/quote-analysis').then(res => res.data),
   uploadItemAttachment: (itemId: string, data: any) => api.post('/procurement/attachments', { itemId, ...data }).then(res => res.data),
+  
+  savePurchasePlanDraft: (data: any) => api.post('/procurement/plans', data).then(res => res.data),
+  submitPurchasePlan: (data: any) => api.post('/procurement/plans', { ...data, submitForApproval: true }).then(res => res.data),
+  getPurchasePlans: () => api.get('/procurement/plans').then(res => res.data),
+  createPurchasePlan: (data: any) => api.post('/procurement/plans', data).then(res => res.data),
+  approvePurchasePlan: (id: string, data: any) => api.put(`/procurement/plans/${id}/approve`, data).then(res => res.data),
+  exportPurchasePlan: (id: string) => {
+    window.open(`${API_BASE_URL}/procurement/plans/${id}/export`, '_blank');
+  },
+  exportPurchasePlanDraft: (data: any) => api.post('/procurement/plans/export-draft', data, { responseType: 'blob' }).then(res => {
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Purchase_Plan_Draft.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }),
 };
 
 export default apiService;

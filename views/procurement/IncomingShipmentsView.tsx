@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Ship, Calendar, Clock, DollarSign, ArrowRight, Settings, AlertCircle,
-  Truck, CheckCircle, Package, ArrowRightLeft, FileSpreadsheet, Anchor, FileText
+  Truck, CheckCircle, Package, ArrowRightLeft, FileSpreadsheet, Anchor, FileText, Search, Filter, Eye
 } from 'lucide-react';
 import apiService from '../../services/apiService';
 
@@ -16,9 +17,15 @@ const statusColumns = [
 ];
 
 const IncomingShipmentsView = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [shipments, setShipments] = useState<any[]>([]);
   const [activeShipment, setActiveShipment] = useState<any>(null);
+
+  // Filter and Pagination State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('All');
+  const [columnLimits, setColumnLimits] = useState<Record<string, number>>({});
 
   // Landed cost calculator state
   const [expenses, setExpenses] = useState({
@@ -109,6 +116,19 @@ const IncomingShipmentsView = () => {
     }
   };
 
+  const uniqueSuppliers = useMemo(() => {
+    const suppliers = new Set(shipments.map(s => s.purchaseOrder?.supplier?.name).filter(Boolean));
+    return Array.from(suppliers) as string[];
+  }, [shipments]);
+
+  const filteredShipments = useMemo(() => {
+    return shipments.filter(s => {
+      const matchesSearch = !searchQuery || s.purchaseOrder?.reference?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSupplier = supplierFilter === 'All' || s.purchaseOrder?.supplier?.name === supplierFilter;
+      return matchesSearch && matchesSupplier;
+    });
+  }, [shipments, searchQuery, supplierFilter]);
+
   const groupedShipments = useMemo(() => {
     const groups: Record<string, any[]> = {
       'Ordered': [],
@@ -119,13 +139,13 @@ const IncomingShipmentsView = () => {
       'Arrived': [],
       'Received': []
     };
-    shipments.forEach(s => {
+    filteredShipments.forEach(s => {
       if (groups[s.status]) {
         groups[s.status].push(s);
       }
     });
     return groups;
-  }, [shipments]);
+  }, [filteredShipments]);
 
   if (loading) {
     return <div className="p-8 text-center text-slate-500 font-black uppercase tracking-widest">Loading incoming shipments...</div>;
@@ -145,62 +165,81 @@ const IncomingShipmentsView = () => {
         </div>
       </div>
 
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+        <div className="relative flex-1 w-full">
+          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input 
+            type="text" 
+            placeholder="Search by PO Reference..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all"
+          />
+        </div>
+        <div className="relative flex-1 w-full sm:max-w-xs">
+          <Filter size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+          <select 
+            value={supplierFilter}
+            onChange={(e) => setSupplierFilter(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all appearance-none cursor-pointer"
+          >
+            <option value="All">All Suppliers</option>
+            {uniqueSuppliers.map(sup => <option key={sup} value={sup}>{sup}</option>)}
+          </select>
+        </div>
+      </div>
+
       {/* Kanban Board */}
       <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-7 gap-4">
         {statusColumns.map(col => {
-          const columnShipments = groupedShipments[col.id] || [];
+          const allColShipments = groupedShipments[col.id] || [];
+          const currentLimit = columnLimits[col.id] || 20;
+          const visibleShipments = allColShipments.slice(0, currentLimit);
+          const hasMore = allColShipments.length > currentLimit;
+
           return (
-            <div key={col.id} className="bg-slate-50/50 p-4 rounded-2xl border border-slate-200/50 min-h-[400px] flex flex-col space-y-4">
-              <div className="flex items-center justify-between">
-                <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${col.color}`}>
+            <div key={col.id} className="bg-slate-50/50 rounded-3xl p-3 flex flex-col border border-slate-100/50 shadow-sm min-h-[500px]">
+              <div className="flex items-center justify-between mb-4 px-2">
+                <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg ${col.color}`}>
                   {col.name}
                 </span>
-                <span className="text-xs font-bold text-slate-400">{columnShipments.length}</span>
+                <span className="text-xs font-black text-slate-400 bg-white shadow-sm border border-slate-100 px-2 py-1 rounded-md">
+                  {allColShipments.length}
+                </span>
               </div>
-
-              <div className="flex-1 space-y-3">
-                {columnShipments.map(s => {
-                  const delayed = s.delayedDays > 0;
-                  return (
-                    <div
-                      key={s.id}
-                      className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3 hover:shadow-md transition-shadow relative group"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="text-[10px] font-bold text-slate-400">{s.purchaseOrder?.supplier?.name}</div>
-                        {delayed && (
-                          <div className="flex items-center gap-1 text-[9px] text-rose-500 font-bold bg-rose-50 px-1.5 py-0.5 rounded-full">
-                            <AlertCircle size={10} /> Delayed {s.delayedDays}d
-                          </div>
-                        )}
+              <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+                {visibleShipments.map(s => (
+                  <div
+                    key={s.id}
+                    className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all flex items-center justify-between group cursor-pointer"
+                    onClick={() => navigate(`/purchase-orders/view/${s.purchaseOrderId}`)}
+                  >
+                    <div>
+                      <div className="font-extrabold text-xs text-slate-800">
+                        {s.purchaseOrder?.reference || 'Unknown PO'}
                       </div>
-
-                      <div className="font-extrabold text-xs text-slate-800">PO: {s.purchaseOrder?.reference}</div>
-
-                      <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
-                        <Calendar size={12} className="text-slate-400" />
-                        <span>ETA: {new Date(s.eta).toLocaleDateString('en-GB')}</span>
-                      </div>
-
-                      <div className="text-xs font-extrabold text-blue-600">
-                        USD {Number(s.shipmentValue).toLocaleString()}
-                      </div>
-
-                      {/* Dropdown status updater */}
-                      <div className="pt-2 border-t border-slate-50 flex items-center justify-between">
-                        <select
-                          value={s.status}
-                          onChange={(e) => handleUpdateStatus(s.id, e.target.value)}
-                          className="bg-slate-50 border-0 rounded px-1.5 py-0.5 text-[9px] font-black uppercase text-slate-500 focus:outline-none"
-                        >
-                          {statusColumns.map(opt => (
-                            <option key={opt.id} value={opt.id}>{opt.name}</option>
-                          ))}
-                        </select>
+                      <div className="text-[9px] font-bold text-slate-400 mt-1 flex items-center gap-1">
+                        <Calendar size={10} /> {s.eta ? new Date(s.eta).toLocaleDateString('en-GB') : 'Unknown ETA'}
                       </div>
                     </div>
-                  );
-                })}
+                    <button 
+                      className="text-slate-400 hover:text-blue-600 transition-colors p-1.5 bg-slate-50 hover:bg-blue-50 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600"
+                      title="View Purchase Order Details"
+                    >
+                      <Eye size={14} />
+                    </button>
+                  </div>
+                ))}
+                
+                {hasMore && (
+                  <button 
+                    onClick={() => setColumnLimits(prev => ({ ...prev, [col.id]: currentLimit + 20 }))}
+                    className="w-full py-2 bg-white border border-slate-200 rounded-xl text-[11px] font-black hover:bg-slate-50 hover:text-blue-600 transition-all shadow-sm text-slate-500 uppercase tracking-widest mt-4"
+                  >
+                    Load More ({allColShipments.length - currentLimit} left)
+                  </button>
+                )}
               </div>
             </div>
           );

@@ -111,39 +111,23 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
           </div>
           <ChevronDown size={16} className={cn("text-slate-400 transition-transform", showUserMenu && "rotate-180")} />
 
-          {/* User Switcher Dropdown */}
+          {/* User Dropdown */}
           {showUserMenu && (
-            <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 animate-in fade-in slide-in-from-top-2 duration-200 z-50">
-              <div className="px-4 py-2 border-b border-slate-100 mb-2">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Switch User Simulation</span>
+            <div className="absolute top-full right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 animate-in fade-in slide-in-from-top-2 duration-200 z-50">
+              <div className="px-4 py-3 border-b border-slate-100 mb-1">
+                <p className="text-sm font-bold text-slate-900">{currentUser.name}</p>
+                <p className="text-xs text-slate-500 truncate">{currentUser.email}</p>
               </div>
-              {users.map((user: AppUser) => (
-                <button
-                  key={user.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRoleSwitch(user);
-                  }}
-                  className={cn(
-                    "w-full px-4 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left",
-                    currentUser.id === user.id && "bg-primary/5 border-r-2 border-primary"
-                  )}
-                >
-                  <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
-                    {user.avatar}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-bold text-slate-900 leading-tight">{user.name}</p>
-                    <p className="text-[10px] text-slate-500 font-medium uppercase tracking-tighter">{user.role}</p>
-                  </div>
-                  {currentUser.id === user.id && (
-                    <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
-                  )}
-                </button>
-              ))}
-              <div className="mt-2 pt-2 border-t border-slate-100 px-4 pb-2">
-                <p className="text-[9px] text-slate-400 italic leading-tight">Simulation affects sidebar links and dashboard data.</p>
-              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  apiService.logout();
+                }}
+                className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-error/5 text-error transition-colors text-left"
+              >
+                <LogOut size={16} />
+                <span className="text-sm font-bold">Sign Out</span>
+              </button>
             </div>
           )}
         </div>

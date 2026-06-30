@@ -81,6 +81,8 @@ export interface QuoteItem {
   division?: string;
   total?: string;
   unit?: string;
+  landedUnitCost?: number;
+  landedTotal?: number;
 }
 
 export interface SalesQuote {
@@ -244,6 +246,19 @@ export interface Receipt {
   status: string;
 }
 
+export interface Payment {
+  id: string;
+  date: string;
+  reference: string;
+  paidToContact: string;
+  paidFromAccount: string;
+  description: string;
+  amount: number;
+  currency: string;
+  status: string;
+  createdAt?: string;
+}
+
 export interface InventoryItem {
   id: string;
   itemCode: string;
@@ -269,6 +284,10 @@ export interface InventoryItem {
   hideItemName?: boolean;
   inactive?: boolean;
   imageUrl?: string;
+  palletQty?: number;
+  weightKg?: number;
+  volumeCbm?: number;
+  leadTimeDays?: number;
 }
 
 export interface InventoryTransfer {
@@ -433,6 +452,11 @@ export interface PurchaseInvoice {
   customTitle?: string;
   options?: DocumentOptions;
   docOptions?: DocumentOptions;
+  freightCost?: number;
+  transportCost?: number;
+  handlingCost?: number;
+  bankCharges?: number;
+  customsDuty?: number;
 }
 
 export interface DebitNote {
@@ -493,4 +517,58 @@ export interface PurchaseEnquiryItem {
   unit?: string;
   division?: string;
   discount?: string;
+}
+
+export interface PurchasePlan {
+  id: string;
+  reference: string;
+  month: number;
+  year: number;
+  status: 'Draft' | 'Pending Approval' | 'Approved' | 'Rejected';
+  createdAt?: string;
+  createdBy?: string;
+  items?: PurchasePlanItem[];
+  approvals?: ApprovalWorkflow[];
+  auditLogs?: AuditHistory[];
+}
+
+export interface PurchasePlanItem {
+  id: string;
+  planId: string;
+  itemId: string;
+  supplierId?: string;
+  availableStock: number;
+  avgConsumption: number;
+  safetyStock: number;
+  incomingPos: number;
+  projectedDemand: number;
+  suggestedQty: number;
+  finalOrderQty: number;
+  remarks?: string;
+  aiRecommendation?: string;
+  item?: any;
+  supplier?: any;
+}
+
+export interface ApprovalWorkflow {
+  id: string;
+  planId: string;
+  level: number;
+  roleRequired: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  approverId?: string;
+  approverName?: string;
+  comments?: string;
+  actionDate?: string;
+  createdAt?: string;
+}
+
+export interface AuditHistory {
+  id: string;
+  planId: string;
+  userId: string;
+  userName: string;
+  action: string;
+  details?: string;
+  createdAt?: string;
 }

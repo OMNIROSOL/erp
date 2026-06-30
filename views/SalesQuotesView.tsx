@@ -402,7 +402,7 @@ const SalesQuotesView = () => {
             header: <div className="flex items-center cursor-pointer group hover:text-blue-600 transition-colors" onClick={() => handleSort('Customer')}>Customer <SortIcon column="Customer" /></div>,
             className: 'min-w-[200px]',
             accessor: (o: any) => (
-                <span className="font-medium text-slate-600">{o.customer || 'Unknown'}</span>
+                <span className="font-medium text-slate-600">{typeof o.customer === 'string' ? o.customer : o.customer?.name || 'Unknown'}</span>
             ),
             sortable: false
         },

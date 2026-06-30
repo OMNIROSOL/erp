@@ -265,7 +265,7 @@ const BankAccountsView = () => {
                 <div className="text-right">
                     <span className="text-[10px] text-slate-400 font-bold mr-1">ZMW</span>
                     <span className="font-black text-blue-600">
-                        {a.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        {(a.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </span>
                 </div>
             )
@@ -290,7 +290,7 @@ const BankAccountsView = () => {
                 <div className="text-right">
                     <span className="text-[10px] text-slate-400 font-bold mr-1">ZMW</span>
                     <span className="font-black text-blue-600">
-                        {a.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        {(a.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </span>
                 </div>
             )

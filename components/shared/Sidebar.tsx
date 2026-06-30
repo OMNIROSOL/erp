@@ -153,6 +153,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed }) => {
       ]
     },
     { label: 'Receipts', icon: Receipt, path: '/receipts', id: 'receipts' },
+    { label: 'Payments', icon: Receipt, path: '/payments', id: 'payments' },
     {
       label: 'Sales',
       icon: ShoppingCart,
@@ -174,17 +175,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed }) => {
       path: '/purchase-history',
       id: 'purchase-history',
       submenu: [
+        { label: 'Purchase Dashboard', path: '/purchase/analytics', id: 'purchase-history' },
         { label: 'Suppliers', path: '/suppliers', id: 'suppliers' },
         { label: 'Purchase History', path: '/purchase-history', id: 'purchase-history' },
         { label: 'Purchase Enquiry', path: '/purchase-quotes', id: 'purchase-quotes' },
+        { label: 'Quote Analysis', path: '/purchase/quote-analysis', id: 'quote-analysis' },
         { label: 'Purchase Orders', path: '/purchase-orders', id: 'purchase-orders' },
-        { label: 'Order Planner', path: '/purchase/order-planner', id: 'purchase-orders' },
-        ...(isAdmin ? [{ label: 'Lead Time Master', path: '/purchase/lead-time-master', id: 'suppliers' }] : []),
-        { label: 'What to Order', path: '/purchase/what-to-order', id: 'purchase-orders' },
+        { label: 'Purchase Planning', path: '/purchase/planning', id: 'purchase-orders' },
         { label: 'Landed Cost Calculator', path: '/purchase/costing-reports', id: 'purchase-orders' },
         { label: 'Purchase Invoices', path: '/purchase-invoices', id: 'purchase-invoices' },
         { label: 'Goods Received Notes', path: '/goods-received-notes', id: 'goods-received-notes' },
         { label: 'Debit Notes', path: '/debit-notes', id: 'debit-notes' },
+        { label: 'Incoming Shipments', path: '/purchase/incoming-shipments', id: 'purchase-history' },
       ]
     },
     {
@@ -193,6 +195,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed }) => {
       path: '/inventory-items',
       id: 'inventory-items',
       submenu: [
+        { label: 'Inventory Dashboard', path: '/purchase/consumption', id: 'inventory-items' },
         { label: 'Inventory Items', path: '/inventory-items', id: 'inventory-items' },
         { label: 'Inventory Transfers', path: '/inventory-transfers', id: 'inventory-transfers' },
         { label: 'Inventory Write-offs', path: '/inventory-write-offs', id: 'inventory-write-offs' },

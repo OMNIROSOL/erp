@@ -73,6 +73,7 @@ const NewGoodsReceiptView = () => {
     const [reference, setReference] = useState('');
     const [useManualRef, setUseManualRef] = useState(false);
     const [items, setItems] = useState([{ id: Date.now(), item: '', description: '', qty: '1' }]);
+    const [purchaseOrderId, setPurchaseOrderId] = useState<string | null>(null);
     
     const [dbSuppliers, setDbSuppliers] = useState<any[]>([]);
     const [dbItems, setDbItems] = useState<any[]>([]);
@@ -135,6 +136,7 @@ const NewGoodsReceiptView = () => {
                         setInventoryLocation(grn.inventoryLocation || 'Default Inventory Location');
                         setDescription(grn.description || '');
                         setReference(grn.reference || '');
+                        setPurchaseOrderId(grn.purchaseOrderId || null);
                         setUseManualRef(true);
                         if (grn.items) {
                             setItems(grn.items.map((i: any) => ({
@@ -163,6 +165,7 @@ const NewGoodsReceiptView = () => {
                     let sourceDoc: any = null;
                     try {
                         sourceDoc = await apiService.getPurchaseOrder(copyFromId);
+                        setPurchaseOrderId(sourceDoc.id);
                     } catch (e) {
                         try {
                             sourceDoc = await apiService.getPurchaseEnquiry(copyFromId);
@@ -245,6 +248,7 @@ const NewGoodsReceiptView = () => {
         try {
             const grnData = {
                 supplierId: selectedSupplier.id,
+                purchaseOrderId: purchaseOrderId,
                 reference: reference,
                 receivedDate: date,
                 description: description,

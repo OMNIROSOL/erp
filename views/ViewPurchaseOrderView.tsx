@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PurchaseOrder, Supplier } from '../types';
 import apiService from '../services/apiService';
+import EmailComposerModal from '../components/shared/EmailComposerModal';
 import {
     Printer,
     FileText,
@@ -36,6 +37,8 @@ const ViewPurchaseOrderView = () => {
     const [allSuppliers, setAllSuppliers] = useState<Supplier[]>([]);
     const [taxCodes, setTaxCodes] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -347,17 +350,71 @@ const ViewPurchaseOrderView = () => {
                             <Download size={14} /> PDF
                         </button>
                         <button
-                            onClick={() => {
-                                const subject = encodeURIComponent(`Purchase Order: ${order.reference}`);
-                                const body = encodeURIComponent(`Dear ${order.supplier},\n\nPlease find attached our purchase order ${order.reference}.\n\nKind regards.`);
-                                window.location.href = `mailto:${supplierEmail}?subject=${subject}&body=${body}`;
-                            }}
+                            onClick={() => setIsEmailModalOpen(true)}
                             className="bg-white border border-gray-300 px-4 py-1.5 text-[12px] font-bold text-gray-700 rounded shadow-sm hover:bg-gray-50 flex items-center gap-2"
                         >
                             <Mail size={14} /> Email
                         </button>
                     </div>
                 </div>
+
+                <EmailComposerModal
+                    isOpen={isEmailModalOpen}
+                    onClose={() => setIsEmailModalOpen(false)}
+                    defaultTo={supplierEmail || ''}
+                    defaultSubject={`Purchase Order: ${order.reference}`}
+                    defaultBody={`Dear ${supplierName},\n\nPlease find attached our purchase order ${order.reference}.\n\nKind regards.`}
+                    attachmentName={`${order.reference || 'PurchaseOrder'}.pdf`}
+                    onSend={async (emailData) => {
+                        try {
+                            const element = pdfRef.current;
+                            if (!element) throw new Error('Document element not found');
+
+                            const originalStyle = element.getAttribute('style') || '';
+                            const clonedElement = element.cloneNode(true) as HTMLElement;
+                            const container = document.createElement('div');
+                            container.style.position = 'absolute';
+                            container.style.top = '-9999px';
+                            container.style.left = '-9999px';
+                            container.style.width = '210mm';
+                            container.style.background = 'white';
+                            container.appendChild(clonedElement);
+                            document.body.appendChild(container);
+
+                            const html2canvas = (await import('html2canvas-pro')).default;
+                            const jsPDF = (await import('jspdf')).jsPDF;
+
+                            const canvas = await html2canvas(clonedElement, {
+                                scale: 2,
+                                useCORS: true,
+                                logging: false,
+                                backgroundColor: '#ffffff',
+                                onclone: (clonedDoc) => {
+                                    const style = clonedDoc.createElement('style');
+                                    style.innerHTML = `* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }`;
+                                    clonedDoc.head.appendChild(style);
+                                }
+                            });
+
+                            document.body.removeChild(container);
+
+                            const imgData = canvas.toDataURL('image/png');
+                            const pdf = new jsPDF('p', 'mm', 'a4');
+                            const imgProps = pdf.getImageProperties(imgData);
+                            const pdfWidth = pdf.internal.pageSize.getWidth();
+                            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+                            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                            const pdfBlob = pdf.output('blob');
+
+                            await apiService.sendEmailWithAttachment(emailData, pdfBlob, `${order.reference || 'PurchaseOrder'}.pdf`);
+                            alert('Email sent successfully!');
+                        } catch (err: any) {
+                            console.error('Email send failed:', err);
+                            throw err;
+                        }
+                    }}
+                />
 
                 <div className="flex items-center space-x-2">
                     <div className="flex bg-white border border-gray-300 rounded shadow-sm">

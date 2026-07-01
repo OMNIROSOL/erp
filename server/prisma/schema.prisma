@@ -328,6 +328,7 @@ model ChartOfAccount {
   name             String
   accountType      String        @map("account_type")
   isPaymentAccount Boolean?      @default(false) @map("is_payment_account")
+  inactive         Boolean?      @default(false)
   ledgerEntries    LedgerEntry[]
 
   @@map("chart_of_accounts")

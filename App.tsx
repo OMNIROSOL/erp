@@ -26,7 +26,9 @@ import EditColumnsView from './views/EditColumnsView';
 import EditInvoiceColumnsView from './views/EditInvoiceColumnsView';
 import SalesQuotesView from './views/SalesQuotesView';
 import AccountsView from './views/AccountsView';
+import SummaryView from './views/SummaryView';
 import BankAccountsView from './views/BankAccountsView';
+import ViewBankAccountView from './views/ViewBankAccountView';
 import InvoicesView from './views/InvoicesView';
 import InvoiceFormDefaultsView from './views/InvoiceFormDefaultsView';
 import BatchPrintView from './views/BatchPrintView';
@@ -86,6 +88,11 @@ import ViewSalesInvoiceTotalsByItemReportView from './views/ViewSalesInvoiceTota
 import PaymentsView from './views/PaymentsView';
 import NewPaymentView from './views/NewPaymentView';
 import ViewPaymentView from './views/ViewPaymentView';
+
+// Inter Account Transfers Imports
+import InterAccountTransfersView from './views/InterAccountTransfersView';
+import NewInterAccountTransferView from './views/NewInterAccountTransferView';
+import ViewInterAccountTransferView from './views/ViewInterAccountTransferView';
 
 // Purchase Imports
 import SuppliersView from './views/SuppliersView';
@@ -173,7 +180,8 @@ const App = () => {
         {/* Main Layout Route with Nested Routes */}
         <Route element={<PrivateRoute><Layout /></PrivateRoute>}>
           {/* Dashboard Routes */}
-          <Route path="/" element={<SalesDashboard />} />
+          <Route path="/" element={<SummaryView />} />
+          <Route path="/summary" element={<SummaryView />} />
           <Route path="/sales-dashboard" element={<SalesDashboard />} />
           <Route path="/reports" element={<ReportsView />} />
           <Route path="/reports/aged-receivables" element={<AgedReceivablesView />} />
@@ -251,6 +259,7 @@ const App = () => {
           {/* Bank & Cash Routes */}
           <Route path="/account" element={<BankAccountsView />} />
           <Route path="/account/new" element={<NewBankAccountView />} />
+          <Route path="/account/view/:id" element={<ViewBankAccountView />} />
           <Route path="/account/edit/:id" element={<EditBankAccountView />} />
           <Route path="/account/edit-columns" element={<EditBankAccountColumnsView />} />
 
@@ -378,6 +387,12 @@ const App = () => {
           <Route path="/payments/new" element={<NewPaymentView />} />
           <Route path="/payments/view/:id" element={<ViewPaymentView />} />
           <Route path="/payments/edit/:id" element={<NewPaymentView />} />
+
+          {/* Inter Account Transfers Routes */}
+          <Route path="/inter-account-transfers" element={<InterAccountTransfersView />} />
+          <Route path="/inter-account-transfers/new" element={<NewInterAccountTransferView />} />
+          <Route path="/inter-account-transfers/view/:id" element={<ViewInterAccountTransferView />} />
+          <Route path="/inter-account-transfers/edit/:id" element={<NewInterAccountTransferView />} />
 
           {/* Approvals Routes */}
           <Route path="/approvals" element={<ApprovalsView />} />

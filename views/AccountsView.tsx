@@ -81,7 +81,7 @@ const AccountsView = () => {
             if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [searchQuery, sortColumn, sortDirection, statusFilter]);
+    }, [accounts, searchQuery, sortColumn, sortDirection, statusFilter]);
 
     const paginatedData = useMemo(() => {
         return filteredAccounts.slice((currentPage - 1) * pageSize, currentPage * pageSize);

@@ -64,6 +64,7 @@ export const apiService = {
   deleteItemCategory: (id: string) => api.delete(`/item-categories/${id}`).then(res => res.data),
 
   getAccounts: () => api.get('/accounts').then(res => res.data),
+  getSummary: () => api.get('/summary').then(res => res.data),
   getAccount: (id: string) => api.get(`/accounts/${id}`).then(res => res.data),
   createAccount: (data: any) => api.post('/accounts', data).then(res => res.data),
   updateAccount: (id: string, data: any) => api.put(`/accounts/${id}`, data).then(res => res.data),
@@ -189,6 +190,7 @@ export const apiService = {
   getBankAccounts: () => api.get('/bank-accounts').then(res => res.data),
   createBankAccount: (data: any) => api.post('/bank-accounts', data).then(res => res.data),
   updateBankAccount: (id: string, data: any) => api.put(`/bank-accounts/${id}`, data).then(res => res.data),
+  deleteBankAccount: (id: string) => api.delete(`/bank-accounts/${id}`).then(res => res.data),
 
   // Roles & Permissions
   getRoles: () => api.get('/roles').then(res => res.data),
@@ -307,6 +309,12 @@ export const apiService = {
     link.click();
     link.remove();
   }),
+
+  // Inter-Account Transfers
+  getInterAccountTransfers: () => api.get('/inter-account-transfers').then(res => res.data),
+  getInterAccountTransfer: (id: string) => api.get(`/inter-account-transfers/${id}`).then(res => res.data),
+  createInterAccountTransfer: (data: any) => api.post('/inter-account-transfers', data).then(res => res.data),
+  deleteInterAccountTransfer: (id: string) => api.delete(`/inter-account-transfers/${id}`).then(res => res.data),
 };
 
 export default apiService;

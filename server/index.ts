@@ -546,6 +546,7 @@ const generateNextReference = async (type: string, tx: any = prisma) => {
     case 'inventory-transfer': count = await getNextNum(tx.inventoryTransfer, 'TR-'); prefix = 'TR'; break;
     case 'inventory-write-off': count = await getNextNum(tx.inventoryWriteOff, 'WO-'); prefix = 'WO'; break;
     case 'goods-received-note': count = await getNextNum(tx.goodsReceivedNote, 'GRN-'); prefix = 'GRN'; break;
+    case 'inter-account-transfer': count = await getNextNum(tx.interAccountTransfer, 'IAT-'); prefix = 'IAT'; break;
     case 'debit-note': prefix = 'DN'; count = Math.floor(Math.random() * 1000); break;
     case 'credit-note': prefix = 'CN'; count = Math.floor(Math.random() * 1000); break;
     default: throw new Error('Invalid document type');
@@ -1897,8 +1898,68 @@ app.get('/api/accounts', async (req, res) => {
     const accounts = await prisma.chartOfAccount.findMany({
       orderBy: { code: 'asc' }
     });
-    res.json(accounts);
+    const accountsWithTypes = accounts.map(a => ({ ...a, type: a.accountType }));
+    res.json(accountsWithTypes);
   } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/accounts/:id', async (req, res) => {
+  try {
+    const account = await prisma.chartOfAccount.findUnique({
+      where: { id: req.params.id }
+    });
+    if (!account) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    // Calculate balance on the fly since ViewBankAccountView uses it
+    let balance = 0;
+    const entries = await prisma.ledgerEntry.findMany({
+      where: { accountId: req.params.id }
+    });
+    const sumDebit = entries.reduce((sum, entry) => sum + Number(entry.debit || 0), 0);
+    const sumCredit = entries.reduce((sum, entry) => sum + Number(entry.credit || 0), 0);
+    if (['Asset', 'Expense'].includes(account.accountType)) {
+      balance = sumDebit - sumCredit;
+    } else {
+      balance = sumCredit - sumDebit;
+    }
+    res.json({ ...account, type: account.accountType, balance });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/summary', async (req, res) => {
+  try {
+    const accounts = await prisma.chartOfAccount.findMany({
+      include: {
+        ledgerEntries: true
+      },
+      orderBy: { code: 'asc' }
+    });
+
+    const accountsWithBalances = accounts.map(account => {
+      let balance = 0;
+      const entries = account.ledgerEntries || [];
+      const sumDebit = entries.reduce((sum, entry) => sum + Number(entry.debit || 0), 0);
+      const sumCredit = entries.reduce((sum, entry) => sum + Number(entry.credit || 0), 0);
+
+      if (['Asset', 'Expense'].includes(account.accountType)) {
+        balance = sumDebit - sumCredit;
+      } else {
+        balance = sumCredit - sumDebit;
+      }
+
+      // We remove the raw entries so we don't send huge payloads
+      const { ledgerEntries, ...accountData } = account;
+      return { ...accountData, balance };
+    });
+
+    res.json(accountsWithBalances);
+  } catch (err: any) {
+    console.error('Summary API error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1909,8 +1970,80 @@ app.get('/api/bank-accounts', async (req, res) => {
       where: { isPaymentAccount: true },
       orderBy: { name: 'asc' }
     });
-    res.json(accounts);
+    const accountsWithTypes = accounts.map(a => ({ ...a, type: a.accountType }));
+    res.json(accountsWithTypes);
   } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/accounts', async (req, res) => {
+  try {
+    const { name, code, type, isPaymentAccount } = req.body;
+    const uniqueCode = code || `ACC-${Date.now()}`;
+    const result = await prisma.chartOfAccount.create({
+      data: {
+        name,
+        code: uniqueCode,
+        accountType: type || 'Asset',
+        isPaymentAccount: isPaymentAccount || false
+      }
+    });
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/bank-accounts', async (req, res) => {
+  try {
+    const { name, code, type, isPaymentAccount } = req.body;
+    const uniqueCode = code || `BNK-${Date.now()}`;
+    const result = await prisma.chartOfAccount.create({
+      data: {
+        name,
+        code: uniqueCode,
+        accountType: type || 'Asset',
+        isPaymentAccount: isPaymentAccount ?? true
+      }
+    });
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/bank-accounts/:id', async (req, res) => {
+  try {
+    const { name, code, type, isPaymentAccount, inactive } = req.body;
+    const dataToUpdate: any = {
+      name,
+      accountType: type,
+      isPaymentAccount,
+      inactive
+    };
+    if (code) {
+      dataToUpdate.code = code;
+    }
+    const result = await prisma.chartOfAccount.update({
+      where: { id: req.params.id },
+      data: dataToUpdate
+    });
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/bank-accounts/:id', async (req, res) => {
+  try {
+    await prisma.chartOfAccount.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  } catch (err: any) {
+    // If it's linked to transactions, it will throw a foreign key error
+    if (err.code === 'P2003') {
+      return res.status(400).json({ error: 'Cannot delete bank account because it has associated transactions.' });
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -3646,6 +3779,97 @@ app.delete('/api/payments/:id', async (req, res) => {
     await prisma.payment.delete({
       where: { id: req.params.id }
     });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/inter-account-transfers', async (req, res) => {
+  try {
+    const transfers = await prisma.interAccountTransfer.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(transfers);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/inter-account-transfers/:id', async (req, res) => {
+  try {
+    const transfer = await prisma.interAccountTransfer.findUnique({
+      where: { id: req.params.id }
+    });
+    if (!transfer) return res.status(404).json({ error: 'Transfer not found' });
+    res.json(transfer);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/inter-account-transfers', async (req, res) => {
+  try {
+    const { reference, date, paidFromAccount, receivedInAccount, description, amount, currency } = req.body;
+    const finalRef = reference || await generateNextReference('inter-account-transfer');
+    
+    const result = await prisma.$transaction(async (tx) => {
+      const transfer = await tx.interAccountTransfer.create({
+        data: {
+          reference: finalRef,
+          date: new Date(date),
+          paidFromAccount,
+          receivedInAccount,
+          description,
+          amount,
+          currency: currency || 'ZMW',
+          status: 'Completed'
+        }
+      });
+
+      // Double-entry ledger (Credit Source, Debit Destination)
+      await tx.ledgerEntry.create({
+        data: {
+          accountId: paidFromAccount,
+          transactionDate: new Date(date),
+          transactionType: 'Inter Account Transfer',
+          source_document_id: transfer.id,
+          credit: amount,
+          debit: 0
+        }
+      });
+
+      await tx.ledgerEntry.create({
+        data: {
+          accountId: receivedInAccount,
+          transactionDate: new Date(date),
+          transactionType: 'Inter Account Transfer',
+          source_document_id: transfer.id,
+          debit: amount,
+          credit: 0
+        }
+      });
+
+      return transfer;
+    });
+    res.status(201).json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/inter-account-transfers/:id', async (req, res) => {
+  try {
+    const transfer = await prisma.interAccountTransfer.findUnique({ where: { id: req.params.id }});
+    if (transfer) {
+      await prisma.$transaction(async (tx) => {
+        // Delete associated ledger entries
+        await tx.ledgerEntry.deleteMany({
+          where: { source_document_id: transfer.id }
+        });
+        await tx.interAccountTransfer.delete({ where: { id: transfer.id }});
+      });
+    }
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

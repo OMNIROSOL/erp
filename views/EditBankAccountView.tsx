@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import apiService from '../services/apiService';
-import { BankAccount } from '../types';
+import { Account } from '../types';
 
 const EditBankAccountView = () => {
     const { id } = useParams();
@@ -50,12 +50,25 @@ const EditBankAccountView = () => {
                 code,
                 currency,
                 division,
-                isPaymentAccount: !isInactive
+                isPaymentAccount: true,
+                inactive: isInactive
             });
             navigate('/account');
         } catch (err) {
             console.error('Failed to update bank account:', err);
             alert('Failed to update bank account in database');
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!id) return;
+        if (!window.confirm('Are you sure you want to delete this bank account?')) return;
+        try {
+            await apiService.deleteBankAccount(id);
+            navigate('/account');
+        } catch (err: any) {
+            console.error('Failed to delete bank account:', err);
+            alert(err.response?.data?.error || 'Failed to delete bank account');
         }
     };
 
@@ -246,9 +259,12 @@ const EditBankAccountView = () => {
                     >
                         Update
                     </button>
-                    <span className="text-[12px] text-[#2196f3]">
-                        Administrator has disabled "Update" and "Delete" buttons
-                    </span>
+                    <button
+                        onClick={handleDelete}
+                        className="bg-transparent border border-rose-500 text-rose-500 hover:bg-rose-50 px-6 py-1.5 rounded text-[13px] font-medium transition"
+                    >
+                        Delete
+                    </button>
                 </div>
             </div>
         </div>

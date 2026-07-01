@@ -96,8 +96,8 @@ const BankAccountsView = () => {
         const fetchAccounts = async () => {
             setIsLoading(true);
             try {
-                const data = await apiService.getAccounts();
-                // Filter only payment accounts if that property exists in DB, 
+                const data = await apiService.getBankAccounts();
+                // We don't need to filter on frontend since getBankAccounts does it
                 // otherwise show all or filter based on name/code
                 const filtered = data.filter((a: any) => 
                     a.name.toLowerCase().includes(searchQuery.toLowerCase())

@@ -114,17 +114,23 @@ const NewReceiptView = () => {
 
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+    const [customers, setCustomers] = useState<any[]>([]);
+    const [suppliers, setSuppliers] = useState<any[]>([]);
 
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                const [accs, invs] = await Promise.all([
+                const [accs, invs, custs, supps] = await Promise.all([
                     apiService.getAccounts(),
-                    apiService.getItems()
+                    apiService.getItems(),
+                    apiService.getCustomers(),
+                    apiService.getSuppliers()
                 ]);
                 setAccounts(accs);
                 setInventoryItems(invs);
+                setCustomers(custs);
+                setSuppliers(supps);
                 
                 if (id) {
                     const receipt = await apiService.getReceipt(id);
@@ -345,13 +351,33 @@ const NewReceiptView = () => {
                                         </select>
                                         <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none transition-colors group-focus-within:text-indigo-500" />
                                     </div>
-                                    <input
-                                        type="text"
-                                        value={paidByOptional}
-                                        onChange={(e) => setPaidByOptional(e.target.value)}
-                                        placeholder="Name or Contact..."
-                                        className="flex-1 bg-transparent px-5 py-3 text-[13px] font-semibold text-slate-700 outline-none placeholder:text-slate-400"
-                                    />
+                                    {paidByContact === 'Customer' ? (
+                                        <select
+                                            value={paidByOptional}
+                                            onChange={(e) => setPaidByOptional(e.target.value)}
+                                            className="flex-1 bg-transparent px-5 py-3 text-[13px] font-semibold text-slate-700 outline-none appearance-none"
+                                        >
+                                            <option value="">Select Customer...</option>
+                                            {customers.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                        </select>
+                                    ) : paidByContact === 'Supplier' ? (
+                                        <select
+                                            value={paidByOptional}
+                                            onChange={(e) => setPaidByOptional(e.target.value)}
+                                            className="flex-1 bg-transparent px-5 py-3 text-[13px] font-semibold text-slate-700 outline-none appearance-none"
+                                        >
+                                            <option value="">Select Supplier...</option>
+                                            {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                        </select>
+                                    ) : (
+                                        <input
+                                            type="text"
+                                            value={paidByOptional}
+                                            onChange={(e) => setPaidByOptional(e.target.value)}
+                                            placeholder="Name or Contact..."
+                                            className="flex-1 bg-transparent px-5 py-3 text-[13px] font-semibold text-slate-700 outline-none placeholder:text-slate-400"
+                                        />
+                                    )}
                                 </div>
                             </div>
 

@@ -1896,10 +1896,23 @@ app.get('/api/reference/next/:type', async (req, res) => {
 app.get('/api/accounts', async (req, res) => {
   try {
     const accounts = await prisma.chartOfAccount.findMany({
+      include: {
+        ledgerEntries: true
+      },
       orderBy: { code: 'asc' }
     });
-    const accountsWithTypes = accounts.map(a => ({ ...a, type: a.accountType }));
-    res.json(accountsWithTypes);
+    const accountsWithTypesAndBalances = accounts.map(a => {
+      let balance = 0;
+      const sumDebit = a.ledgerEntries.reduce((sum, entry) => sum + Number(entry.debit || 0), 0);
+      const sumCredit = a.ledgerEntries.reduce((sum, entry) => sum + Number(entry.credit || 0), 0);
+      if (['Asset', 'Expense'].includes(a.accountType)) {
+        balance = sumDebit - sumCredit;
+      } else {
+        balance = sumCredit - sumDebit;
+      }
+      return { ...a, type: a.accountType, balance };
+    });
+    res.json(accountsWithTypesAndBalances);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1968,10 +1981,23 @@ app.get('/api/bank-accounts', async (req, res) => {
   try {
     const accounts = await prisma.chartOfAccount.findMany({
       where: { isPaymentAccount: true },
+      include: {
+        ledgerEntries: true
+      },
       orderBy: { name: 'asc' }
     });
-    const accountsWithTypes = accounts.map(a => ({ ...a, type: a.accountType }));
-    res.json(accountsWithTypes);
+    const accountsWithTypesAndBalances = accounts.map(a => {
+      let balance = 0;
+      const sumDebit = a.ledgerEntries.reduce((sum, entry) => sum + Number(entry.debit || 0), 0);
+      const sumCredit = a.ledgerEntries.reduce((sum, entry) => sum + Number(entry.credit || 0), 0);
+      if (['Asset', 'Expense'].includes(a.accountType)) {
+        balance = sumDebit - sumCredit;
+      } else {
+        balance = sumCredit - sumDebit;
+      }
+      return { ...a, type: a.accountType, balance };
+    });
+    res.json(accountsWithTypesAndBalances);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -3889,3 +3915,128 @@ app.listen(PORT, () => {
   console.log(`🚀 ERP Backend running at http://localhost:${PORT}`);
 });
 
+// Expense Claim Payers
+app.get('/api/expense-claim-payers', async (req, res) => {
+  try {
+    const payers = await prisma.expenseClaimPayer.findMany({
+      orderBy: { name: 'asc' }
+    });
+    res.json(payers);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/expense-claim-payers', async (req, res) => {
+  try {
+    const { name, code } = req.body;
+    const result = await prisma.expenseClaimPayer.create({
+      data: { name, code: code || 'PAYER-' + Date.now() }
+    });
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Expense Claims
+app.get('/api/expense-claims', async (req, res) => {
+  try {
+    const claims = await prisma.expenseClaim.findMany({
+      include: { payer: true, items: true },
+      orderBy: { date: 'desc' }
+    });
+    res.json(claims);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/expense-claims/:id', async (req, res) => {
+  try {
+    const claim = await prisma.expenseClaim.findUnique({
+      where: { id: req.params.id },
+      include: { payer: true, items: { include: { account: true } } }
+    });
+    if (!claim) return res.status(404).json({ error: 'Expense Claim not found' });
+    res.json(claim);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/expense-claims', async (req, res) => {
+  try {
+    const { date, reference, payerId, payee, currency, description, amountsAreTaxInclusive, items } = req.body;
+    
+    // Create the expense claim header and lines
+    const result = await prisma.expenseClaim.create({
+      data: {
+        date: new Date(date),
+        reference: reference || 'EXP-' + Date.now(),
+        payerId,
+        payee,
+        currency,
+        description,
+        amountsAreTaxInclusive,
+        items: {
+          create: items.map((item: any) => ({
+            accountId: item.account,
+            description: item.description,
+            qty: Number(item.qty || 1),
+            unitPrice: Number(item.unitPrice || 0),
+            taxCode: item.taxCode,
+            taxAmount: Number(item.taxAmount || 0)
+          }))
+        }
+      },
+      include: { items: true }
+    });
+
+    // Accounting: Debit Expense Accounts, Credit Expense Claims Payable (Liability)
+    const liabilityAccount = await prisma.chartOfAccount.findFirst({
+      where: { name: 'Expense Claims Payable' }
+    }) || await prisma.chartOfAccount.create({
+      data: {
+        name: 'Expense Claims Payable',
+        code: 'LIAB-EXP-CLAIMS',
+        accountType: 'Liability',
+        isPaymentAccount: false
+      }
+    });
+
+    let totalClaimAmount = 0;
+    const ledgerEntries = [];
+    for (const item of result.items) {
+      if (!item.accountId) continue;
+      const lineTotal = Number(item.qty || 1) * Number(item.unitPrice || 0);
+      totalClaimAmount += lineTotal;
+
+      // Debit the expense account
+      ledgerEntries.push({
+        accountId: item.accountId,
+        debit: lineTotal,
+        credit: 0
+      });
+    }
+
+    // Credit the Liability Account for the total amount
+    if (totalClaimAmount > 0) {
+      ledgerEntries.push({
+        accountId: liabilityAccount.id,
+        debit: 0,
+        credit: totalClaimAmount
+      });
+    }
+
+    if (ledgerEntries.length > 0) {
+      await prisma.ledgerEntry.createMany({
+        data: ledgerEntries
+      });
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});

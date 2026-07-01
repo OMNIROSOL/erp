@@ -139,7 +139,19 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed }) => {
   };
 
   const menuItems = [
-    { label: 'Summary', icon: LayoutDashboard, path: '/summary', id: 'summary' },
+    {
+      label: 'Accounting',
+      icon: LayoutDashboard,
+      path: '/summary',
+      id: 'summary',
+      submenu: [
+        { label: 'Summary', path: '/summary', id: 'summary' },
+        { label: 'Receipts', path: '/receipts', id: 'receipts' },
+        { label: 'Payments', path: '/payments', id: 'payments' },
+        { label: 'Inter Account Transfers', path: '/inter-account-transfers', id: 'inter-account-transfers' },
+        { label: 'Expense Claims', path: '/expense-claims', id: 'expense-claims' },
+      ]
+    },
     { label: 'Sales Dashboard', icon: BarChart3, path: '/sales-dashboard', id: 'dashboard' },
     {
       label: 'Master Data',
@@ -153,9 +165,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed }) => {
         { label: 'Item Categories', path: '/master/categories', id: 'categories' },
       ]
     },
-    { label: 'Receipts', icon: Receipt, path: '/receipts', id: 'receipts' },
-    { label: 'Payments', icon: Receipt, path: '/payments', id: 'payments' },
-    { label: 'Inter Account Transfers', icon: ArrowRightLeft, path: '/inter-account-transfers', id: 'inter-account-transfers' },
+
     {
       label: 'Sales',
       icon: ShoppingCart,

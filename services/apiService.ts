@@ -315,6 +315,13 @@ export const apiService = {
   getInterAccountTransfer: (id: string) => api.get(`/inter-account-transfers/${id}`).then(res => res.data),
   createInterAccountTransfer: (data: any) => api.post('/inter-account-transfers', data).then(res => res.data),
   deleteInterAccountTransfer: (id: string) => api.delete(`/inter-account-transfers/${id}`).then(res => res.data),
+
+  // Expense Claims
+  getExpenseClaimPayers: () => api.get('/expense-claim-payers').then(res => res.data),
+  createExpenseClaimPayer: (data: any) => api.post('/expense-claim-payers', data).then(res => res.data),
+  getExpenseClaims: () => api.get('/expense-claims').then(res => res.data),
+  getExpenseClaim: (id: string) => api.get(`/expense-claims/${id}`).then(res => res.data),
+  createExpenseClaim: (data: any) => api.post('/expense-claims', data).then(res => res.data),
 };
 
 export default apiService;

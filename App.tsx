@@ -94,6 +94,11 @@ import InterAccountTransfersView from './views/InterAccountTransfersView';
 import NewInterAccountTransferView from './views/NewInterAccountTransferView';
 import ViewInterAccountTransferView from './views/ViewInterAccountTransferView';
 
+// Expense Claims Imports
+import ExpenseClaimsView from './views/ExpenseClaimsView';
+import NewExpenseClaimView from './views/NewExpenseClaimView';
+import ExpenseClaimPayersView from './views/ExpenseClaimPayersView';
+
 // Purchase Imports
 import SuppliersView from './views/SuppliersView';
 import PurchaseHistoryView from './views/PurchaseHistoryView';
@@ -393,6 +398,12 @@ const App = () => {
           <Route path="/inter-account-transfers/new" element={<NewInterAccountTransferView />} />
           <Route path="/inter-account-transfers/view/:id" element={<ViewInterAccountTransferView />} />
           <Route path="/inter-account-transfers/edit/:id" element={<NewInterAccountTransferView />} />
+
+          {/* Expense Claims Routes */}
+          <Route path="/expense-claims" element={<ExpenseClaimsView />} />
+          <Route path="/expense-claims/new" element={<NewExpenseClaimView />} />
+          <Route path="/expense-claims/edit/:id" element={<NewExpenseClaimView />} />
+          <Route path="/expense-claim-payers" element={<ExpenseClaimPayersView />} />
 
           {/* Approvals Routes */}
           <Route path="/approvals" element={<ApprovalsView />} />

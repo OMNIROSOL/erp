@@ -329,7 +329,8 @@ model ChartOfAccount {
   accountType      String        @map("account_type")
   isPaymentAccount Boolean?      @default(false) @map("is_payment_account")
   inactive         Boolean?      @default(false)
-  ledgerEntries    LedgerEntry[]
+  ledgerEntries          LedgerEntry[]
+  expenseClaimLines      ExpenseClaimLine[]
 
   @@map("chart_of_accounts")
   @@schema("finance")
@@ -798,4 +799,48 @@ model AuditHistory {
 
   @@map("audit_history")
   @@schema("purchase")
+}
+
+model ExpenseClaimPayer {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String         @unique
+  name      String
+  inactive  Boolean?       @default(false)
+  claims    ExpenseClaim[]
+
+  @@map("expense_claim_payers")
+  @@schema("finance")
+}
+
+model ExpenseClaim {
+  id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  date                   DateTime           @default(dbgenerated("CURRENT_DATE")) @db.Date
+  reference              String             @unique
+  payerId                String             @map("payer_id") @db.Uuid
+  payer                  ExpenseClaimPayer  @relation(fields: [payerId], references: [id])
+  payee                  String?
+  currency               String?
+  description            String?
+  amountsAreTaxInclusive Boolean?           @default(false) @map("amounts_are_tax_inclusive")
+  imagePath              String?            @map("image_path")
+  items                  ExpenseClaimLine[]
+
+  @@map("expense_claims")
+  @@schema("finance")
+}
+
+model ExpenseClaimLine {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  expenseClaimId String          @map("expense_claim_id") @db.Uuid
+  expenseClaim   ExpenseClaim    @relation(fields: [expenseClaimId], references: [id], onDelete: Cascade)
+  accountId      String?         @map("account_id") @db.Uuid
+  account        ChartOfAccount? @relation(fields: [accountId], references: [id])
+  description    String?
+  qty            Decimal?        @db.Decimal(15, 2)
+  unitPrice      Decimal?        @db.Decimal(15, 2) @map("unit_price")
+  taxCode        String?         @map("tax_code")
+  taxAmount      Decimal?        @db.Decimal(15, 2) @map("tax_amount")
+
+  @@map("expense_claim_lines")
+  @@schema("finance")
 }
